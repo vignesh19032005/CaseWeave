@@ -206,4 +206,13 @@ export const api = {
     a.remove();
     URL.revokeObjectURL(url);
   },
+
+  getPatterns: (caseId: string) => request(`/cases/${caseId}/patterns`),
+  extractPatterns: (caseId: string) => request(`/cases/${caseId}/patterns/extract`, { method: "POST" }),
+
+  searchLegal: (query: string, act?: string) =>
+    request(`/legal/search?q=${encodeURIComponent(query)}${act ? `&act=${encodeURIComponent(act)}` : ""}`),
+  getLegalSections: () => request("/legal/sections"),
+  getLegalCompliance: (caseId: string) => request(`/cases/${caseId}/legal-compliance`),
+  getLegalAdvisory: (caseId: string) => request(`/cases/${caseId}/legal-advisory`),
 };

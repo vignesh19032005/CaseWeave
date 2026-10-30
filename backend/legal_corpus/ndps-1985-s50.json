@@ -1,0 +1,18 @@
+{
+  "id": "NDPS-1985-S50",
+  "act": "Narcotic Drugs and Psychotropic Substances Act, 1985",
+  "section": "50",
+  "title": "NDPS Act Section 50 \u2014 Conditions Under Which Search of Persons Shall be Conducted",
+  "topic": "Mandatory search procedure, right to be searched before Gazetted Officer or Magistrate",
+  "type": "statute",
+  "cognizable": null,
+  "bailable": null,
+  "punishment": "Mandatory procedural safeguard (non-compliance vitiates recovery)",
+  "triable_by": "Special NDPS Court",
+  "ingredients": [
+    "Informing suspect of statutory right to be searched in presence of Gazetted Officer or Magistrate",
+    "Search of female must be conducted strictly by female officer",
+    "Recording grounds of belief in writing if search conducted without taking to Magistrate"
+  ],
+  "text": "When any officer duly employed under section 42 is about to search any person under the provisions of section 41, section 42 or section 43, he shall, if such person so requires, take such person without unnecessary delay to the nearest Gazetted Officer of any of the departments mentioned in section 42 or to the nearest Magistrate. Strict mandatory compliance established by Supreme Court Constitution Bench in Vijaysinh Chandubha Jadeja."
+}

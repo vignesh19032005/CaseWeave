@@ -1,0 +1,19 @@
+{
+  "id": "SC-PREC-ARJUN-PANDITRAO",
+  "act": "Supreme Court of India Precedent",
+  "section": "Civil Appeal Nos. 2082-2083 of 2020",
+  "title": "Arjun Panditrao Khotkar v. Kailash Kushanrao Gorantyal (2020) 7 SCC 1",
+  "topic": "Mandatory nature of electronic certificate, secondary digital evidence, Section 65B/63",
+  "type": "precedent",
+  "cognizable": null,
+  "bailable": null,
+  "punishment": "Judicial Precedent / Law of the Land (Article 141)",
+  "triable_by": "All Courts",
+  "ingredients": [
+    "Certificate under Section 65B(4) / BSA Section 63 is a condition precedent to admissibility of electronic records",
+    "Oral evidence cannot substitute the required statutory certificate",
+    "Distinction between original device owner (primary) vs printed/copied records (secondary)",
+    "Court may summon required certificate under CrPC Sec 91 / BNSS Sec 94 if authority refuses"
+  ],
+  "text": "A 3-Judge Bench of the Supreme Court conclusively held that the certificate required under Section 65B(4) of the Evidence Act (now Section 63 of Bharatiya Sakshya Adhiniyam, 2023) is a mandatory condition precedent for the admissibility of electronic evidence in the form of secondary evidence (CCTV hard drives, CD-ROMs, printed call detail records). In the absence of a contemporaneous certificate signed by the person in lawful charge of the computer device, secondary electronic evidence is legally inadmissible."
+}

@@ -611,3 +611,83 @@ def download_report_pdf(case_id: str, user: dict = Depends(auth.get_current_user
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# -------------------------------------------------- Pattern Intelligence ----
+
+@app.get("/cases/{case_id}/patterns")
+def get_case_patterns_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "view_case")
+    from pipeline.patterns import get_case_patterns
+    try:
+        return get_case_patterns(case_id)
+    except Exception as e:
+        raise HTTPException(500, f"Error computing pattern intelligence: {str(e)}")
+
+
+@app.post("/cases/{case_id}/patterns/extract")
+def extract_case_patterns_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "upload_evidence")
+    from pipeline.patterns import extract_case_signature
+    try:
+        sig = extract_case_signature(case_id, force=True)
+        return {"status": "extracted", "signature": sig}
+    except Exception as e:
+        raise HTTPException(500, f"Error extracting pattern signature: {str(e)}")
+
+
+@app.post("/cases/patterns/seed")
+def seed_patterns_endpoint(user: dict = Depends(auth.get_current_user)):
+    from pipeline.patterns import seed_historical_patterns
+    try:
+        count = seed_historical_patterns()
+        return {"status": "seeded", "count": count}
+    except Exception as e:
+        raise HTTPException(500, f"Error seeding historical patterns: {str(e)}")
+
+
+# ---------------------------------------------------- Legal Intelligence ----
+
+@app.get("/legal/search")
+def legal_search_endpoint(
+    q: str,
+    act: Optional[str] = None,
+    limit: int = 6,
+    user: dict = Depends(auth.get_current_user)
+):
+    from pipeline.legal_advisor import universal_legal_search
+    try:
+        return universal_legal_search(q, top_k=limit, act_filter=act)
+    except Exception as e:
+        raise HTTPException(500, f"Error executing legal search: {str(e)}")
+
+
+@app.get("/legal/sections")
+def legal_sections_endpoint(user: dict = Depends(auth.get_current_user)):
+    from pipeline.legal_advisor import get_all_legal_corpus_documents
+    try:
+        return get_all_legal_corpus_documents()
+    except Exception as e:
+        raise HTTPException(500, f"Error listing legal corpus: {str(e)}")
+
+
+@app.get("/cases/{case_id}/legal-compliance")
+def case_legal_compliance_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "view_case")
+    from pipeline.legal_advisor import audit_case_legal_compliance
+    try:
+        return audit_case_legal_compliance(case_id)
+    except Exception as e:
+        raise HTTPException(500, f"Error running legal compliance audit: {str(e)}")
+
+
+@app.get("/cases/{case_id}/legal-advisory")
+def case_legal_advisory_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "view_case")
+    from pipeline.legal_advisor import get_fir_legal_advisory
+    try:
+        return get_fir_legal_advisory(case_id)
+    except Exception as e:
+        raise HTTPException(500, f"Error generating FIR legal advisory: {str(e)}")
+
+

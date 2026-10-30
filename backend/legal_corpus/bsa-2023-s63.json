@@ -1,0 +1,19 @@
+{
+  "id": "BSA-2023-S63",
+  "act": "Bharatiya Sakshya Adhiniyam, 2023",
+  "section": "63",
+  "title": "BSA Section 63 \u2014 Admissibility of Electronic Records",
+  "topic": "Electronic record admissibility, Section 63 certificate, digital integrity",
+  "type": "statute",
+  "cognizable": null,
+  "bailable": null,
+  "punishment": "Evidentiary statutory condition",
+  "triable_by": "All Courts",
+  "ingredients": [
+    "Identification of electronic record and describing manner of its production",
+    "Particulars of device involved in production of electronic record",
+    "Device was operating properly or periods of out-of-operation did not affect accuracy",
+    "Certificate signed by person in official custody / management of device"
+  ],
+  "text": "Any information contained in an electronic record which is printed on a paper, stored, recorded or copied in optical or magnetic media produced by a computer shall be deemed to be also a document, if the conditions mentioned in this section are satisfied in relation to the information and computer in question and shall be admissible in any proceedings, without further proof or production of the original, as evidence of any contents of the original or of any fact stated therein. Requires a mandatory Certificate in Schedule Form-A/B signed by a responsible official."
+}

@@ -1,0 +1,19 @@
+{
+  "id": "SC-PREC-SELVI",
+  "act": "Supreme Court of India Precedent",
+  "section": "Criminal Appeal No. 1267 of 2004",
+  "title": "Smt. Selvi & Ors. v. State of Karnataka (2010) 7 SCC 263",
+  "topic": "Inadmissibility of involuntary lie-detector, polygraph, brain mapping, Article 20(3)",
+  "type": "precedent",
+  "cognizable": null,
+  "bailable": null,
+  "punishment": "Judicial Precedent / Constitutional Protection",
+  "triable_by": "All Courts",
+  "ingredients": [
+    "Involuntary administration of narco-analysis, polygraph test, or brain mapping violates Article 20(3) (right against self-incrimination)",
+    "Violates personal liberty and privacy under Article 21",
+    "Any information or confession obtained through such involuntary tests is completely inadmissible as evidence in court",
+    "Subsequent discoveries under Section 27 IEA / Section 23 BSA admissible only if voluntary"
+  ],
+  "text": "The Supreme Court ruled that no individual can be subjected to lie-detector, polygraph, or narco-analysis tests against their consent, as doing so violates the fundamental right against self-incrimination guaranteed under Article 20(3) of the Constitution of India and personal liberty under Article 21. Any inculpatory statement or 'scientific truth' derived from non-consensual tests is inadmissible in evidence."
+}

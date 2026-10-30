@@ -156,6 +156,18 @@ SCHEMA_STATEMENTS = [
         INDEX (case_id),
         INDEX (timestamp)
     )""",
+    """CREATE TABLE IF NOT EXISTS case_signatures (
+        case_id VARCHAR(64) PRIMARY KEY,
+        crime_category VARCHAR(64),
+        point_of_entry VARCHAR(128),
+        tools_used VARCHAR(255),
+        target_goods VARCHAR(255),
+        timing_window VARCHAR(64),
+        suspect_count INT DEFAULT 1,
+        signature_traits TEXT,
+        mo_summary TEXT,
+        created_at VARCHAR(64)
+    )""",
 ]
 
 

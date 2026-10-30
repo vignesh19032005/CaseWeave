@@ -1,0 +1,17 @@
+{
+  "id": "BNS-2023-S305",
+  "act": "Bharatiya Nyaya Sanhita, 2023",
+  "section": "305",
+  "title": "BNS Section 305 \u2014 Theft in a Dwelling House or Building",
+  "topic": "Theft in building, storehouse, tent or vessel",
+  "type": "statute",
+  "cognizable": true,
+  "bailable": false,
+  "punishment": "Imprisonment up to 7 years and fine",
+  "triable_by": "Any Magistrate",
+  "ingredients": [
+    "Commission of theft as defined in Section 303",
+    "Theft committed in any building, tent, vessel, or storehouse used for human dwelling or custody of property"
+  ],
+  "text": "Whoever commits theft in any building, tent or vessel, which building, tent or vessel is used as a human dwelling, or used for the custody of property, shall be punished with imprisonment of either description for a term which may extend to seven years, and shall also be liable to fine. This section directly applies to commercial shop, pharmacy, and warehouse burglaries where property is removed from within enclosed premises."
+}

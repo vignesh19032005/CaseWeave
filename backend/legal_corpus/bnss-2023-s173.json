@@ -1,0 +1,18 @@
+{
+  "id": "BNSS-2023-S173",
+  "act": "Bharatiya Nagarik Suraksha Sanhita, 2023",
+  "section": "173",
+  "title": "BNSS Section 173 \u2014 Information in Cognizable Cases (FIR)",
+  "topic": "Registration of FIR, e-FIR, zero FIR, preliminary enquiry",
+  "type": "statute",
+  "cognizable": true,
+  "bailable": null,
+  "punishment": "Procedural mandate",
+  "triable_by": "Police Station Jurisdiction",
+  "ingredients": [
+    "Every information relating to commission of cognizable offence must be recorded",
+    "Permits information given electronically (e-FIR) taken on record and signed within 3 days",
+    "Preliminary enquiry permissible within 14 days for offences punishable between 3 to 7 years with prior approval of DSP"
+  ],
+  "text": "Every information relating to the commission of a cognizable offence, if given orally to an officer in charge of a police station, shall be reduced to writing. Information may be given by electronic communication (e-FIR), which shall be taken on record on being signed within three days by the informant. Preliminary enquiry may be conducted within fourteen days in offences punishable with 3 to 7 years imprisonment."
+}

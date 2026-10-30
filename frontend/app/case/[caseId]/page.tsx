@@ -100,7 +100,7 @@ const LINK_COLORS: Record<string, string> = {
   related_to: "border-sky-700 text-sky-400",
 };
 
-type Tab = "evidence" | "studio" | "conflicts" | "report";
+type Tab = "evidence" | "studio" | "conflicts" | "patterns" | "legal" | "report";
 
 // Next.js 16: useParams() in a Client Component blocks prerendering unless
 // wrapped in Suspense — this page is fully dynamic (auth-gated, per-case
@@ -398,7 +398,7 @@ function CaseStudio() {
       )}
 
       <div className="flex gap-1 px-6 pt-4 border-b border-zinc-900">
-        {(["evidence", "studio", "conflicts", "report"] as Tab[]).map((t) => (
+        {(["evidence", "studio", "conflicts", "patterns", "legal", "report"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -409,6 +409,8 @@ function CaseStudio() {
             {t === "evidence" && "Evidence Explorer"}
             {t === "studio" && "Incident Reconstruction Studio"}
             {t === "conflicts" && `Conflict Analysis (${conflicts.length})`}
+            {t === "patterns" && "Pattern Intelligence"}
+            {t === "legal" && "Legal Section & FIR Co-pilot"}
             {t === "report" && "Report"}
           </button>
         ))}
@@ -476,6 +478,14 @@ function CaseStudio() {
             selectedConflict={selectedConflict}
             onReview={reviewConflict}
           />
+        )}
+
+        {tab === "patterns" && (
+          <PatternsTab caseId={caseId} />
+        )}
+
+        {tab === "legal" && (
+          <LegalTab caseId={caseId} />
         )}
 
         {tab === "report" && (
@@ -1437,6 +1447,637 @@ function ReportTab({ caseId, reportText, onLoad }: { caseId: string; reportText:
         <div className="text-sm text-zinc-600">No report loaded yet — use Load/refresh for the raw text view, or
           Download formatted PDF for a formatted document.</div>
       )}
+    </div>
+  );
+}
+
+function PatternsTab({ caseId }: { caseId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [extracting, setExtracting] = useState(false);
+  const [error, setError] = useState("");
+  const [patternsData, setPatternsData] = useState<any>(null);
+
+  useEffect(() => {
+    loadPatterns();
+  }, [caseId]);
+
+  async function loadPatterns() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api.getPatterns(caseId);
+      setPatternsData(data);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load pattern intelligence");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReExtract() {
+    setExtracting(true);
+    setError("");
+    try {
+      await api.extractPatterns(caseId);
+      await loadPatterns();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to re-extract pattern fingerprint");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-zinc-500">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-indigo-500 border-zinc-800 mb-3" />
+        <div className="text-sm">Scanning case signatures and vector index...</div>
+      </div>
+    );
+  }
+
+  const sig = patternsData?.active_signature;
+  const matches = patternsData?.similar_cases || [];
+  const syn = patternsData?.comparative_synthesis;
+
+  return (
+    <div className="space-y-6 max-w-6xl">
+      {/* Top Banner */}
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-white">Cross-Case Pattern Intelligence</h2>
+            <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
+              Modus Operandi Vector Engine
+            </span>
+          </div>
+          <p className="text-xs text-zinc-400 mt-1">
+            Dense similarity matching over crime scene signatures, entry mechanics, toolmark striations, and serial syndicate tradecraft.
+          </p>
+        </div>
+        <button
+          onClick={handleReExtract}
+          disabled={extracting}
+          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3.5 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 transition-colors"
+        >
+          {extracting ? "Re-profiling M.O..." : "Re-analyze M.O. Fingerprint"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded border border-red-800 bg-red-950 text-red-300 text-sm">{error}</div>
+      )}
+
+      {/* Active Case M.O. Card */}
+      {sig && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              Active Case M.O. Profile · {caseId}
+            </div>
+            <span className="text-xs bg-zinc-800 px-2 py-0.5 rounded text-zinc-300">
+              {sig.crime_category?.replace(/_/g, " ").toUpperCase()}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4">
+            <div className="bg-zinc-950/70 p-3 rounded border border-zinc-800/60">
+              <span className="text-zinc-500 block mb-1">Point of Entry</span>
+              <span className="text-zinc-200 font-medium">{sig.point_of_entry}</span>
+            </div>
+            <div className="bg-zinc-950/70 p-3 rounded border border-zinc-800/60">
+              <span className="text-zinc-500 block mb-1">Tools Identified</span>
+              <span className="text-amber-300 font-medium">{sig.tools_used}</span>
+            </div>
+            <div className="bg-zinc-950/70 p-3 rounded border border-zinc-800/60">
+              <span className="text-zinc-500 block mb-1">Target Goods</span>
+              <span className="text-rose-300 font-medium">{sig.target_goods}</span>
+            </div>
+            <div className="bg-zinc-950/70 p-3 rounded border border-zinc-800/60">
+              <span className="text-zinc-500 block mb-1">Execution Window</span>
+              <span className="text-emerald-300 font-medium">{sig.timing_window}</span>
+            </div>
+          </div>
+
+          <div className="mb-3">
+            <div className="text-[11px] uppercase text-zinc-500 mb-1.5 font-medium">Distinctive Signatures</div>
+            <div className="flex flex-wrap gap-1.5">
+              {(sig.signature_traits || []).map((trait: string, idx: number) => (
+                <span
+                  key={idx}
+                  className="bg-indigo-950/50 border border-indigo-800/60 text-indigo-200 px-2.5 py-0.5 rounded-full text-xs"
+                >
+                  ✓ {trait}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-xs text-zinc-300 bg-zinc-950/50 p-3 rounded border border-zinc-800/40 leading-relaxed">
+            <span className="text-zinc-500 font-medium block mb-0.5">M.O. Executive Narrative:</span>
+            {sig.mo_summary}
+          </div>
+        </div>
+      )}
+
+      {/* Comparative Synthesis / Serial Syndicate Warning */}
+      {syn && (
+        <div
+          className={`border rounded-lg p-5 ${
+            syn.verdict?.includes("STRONG")
+              ? "bg-rose-950/30 border-rose-800/80 shadow-lg shadow-rose-950/20"
+              : "bg-amber-950/20 border-amber-800/60"
+          }`}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🚨</span>
+              <h3 className="font-semibold text-sm text-white tracking-wide">
+                SERIAL CRIME INTELLIGENCE SYNTHESIS
+              </h3>
+            </div>
+            <span
+              className={`px-2.5 py-1 rounded text-xs font-bold tracking-wider ${
+                syn.verdict?.includes("STRONG")
+                  ? "bg-rose-600 text-white"
+                  : "bg-amber-600 text-white"
+              }`}
+            >
+              {syn.verdict}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs mt-4">
+            {/* Matching Signatures */}
+            <div className="bg-zinc-950/80 p-3.5 rounded border border-zinc-800">
+              <div className="text-emerald-400 font-semibold mb-2 flex items-center gap-1.5">
+                <span>✓</span> Identical M.O. Signatures
+              </div>
+              <ul className="space-y-1.5 text-zinc-300">
+                {(syn.matching_traits || []).map((t: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-emerald-500 mt-0.5">•</span>
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Divergent Factors */}
+            <div className="bg-zinc-950/80 p-3.5 rounded border border-zinc-800">
+              <div className="text-amber-400 font-semibold mb-2 flex items-center gap-1.5">
+                <span>⚠</span> Divergent Factors
+              </div>
+              <ul className="space-y-1.5 text-zinc-300">
+                {(syn.divergent_factors || []).map((d: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span>{d}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Actionable Leads */}
+            <div className="bg-zinc-950/80 p-3.5 rounded border border-zinc-800">
+              <div className="text-indigo-400 font-semibold mb-2 flex items-center gap-1.5">
+                <span>🔍</span> Inter-Station Tactical Leads
+              </div>
+              <ul className="space-y-1.5 text-zinc-300">
+                {(syn.inter_station_leads || []).map((l: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-indigo-400 font-bold mt-0.5">→</span>
+                    <span>{l}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Historical Matches Grid */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+            Ranked Historical Crime Docket Matches ({matches.length})
+          </h3>
+          <span className="text-xs text-zinc-500">Vector metric: Cosine distance over M.O. space</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {matches.map((m: any) => {
+            const isHigh = m.similarity_percentage >= 75;
+            const isMed = m.similarity_percentage >= 60;
+            return (
+              <div
+                key={m.case_id}
+                className={`bg-zinc-900/40 border rounded-lg p-4 transition-all hover:border-zinc-700 ${
+                  isHigh ? "border-rose-900/60" : isMed ? "border-amber-900/40" : "border-zinc-800"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2.5">
+                  <div>
+                    <h4 className="text-sm font-semibold text-white">{m.title}</h4>
+                    <div className="text-xs text-zinc-400 flex items-center gap-2 mt-0.5">
+                      <span>{m.jurisdiction}</span>
+                      <span>•</span>
+                      <span className="text-zinc-500">{m.fir_number} ({m.fir_date})</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`px-2.5 py-1 rounded text-xs font-bold tabular-nums shrink-0 ${
+                      isHigh
+                        ? "bg-rose-900/80 text-rose-200 border border-rose-700"
+                        : isMed
+                        ? "bg-amber-900/80 text-amber-200 border border-amber-700"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
+                  >
+                    {m.similarity_percentage}% MATCH
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="bg-zinc-950/60 p-2 rounded border border-zinc-800/50">
+                    <span className="text-zinc-500 block text-[10px] uppercase">Entry</span>
+                    <span className="text-zinc-300 font-medium">{m.point_of_entry}</span>
+                  </div>
+                  <div className="bg-zinc-950/60 p-2 rounded border border-zinc-800/50">
+                    <span className="text-zinc-500 block text-[10px] uppercase">Tools</span>
+                    <span className="text-zinc-300 font-medium">{m.tools_used}</span>
+                  </div>
+                  <div className="bg-zinc-950/60 p-2 rounded border border-zinc-800/50">
+                    <span className="text-zinc-500 block text-[10px] uppercase">Target</span>
+                    <span className="text-zinc-300 font-medium">{m.target_goods}</span>
+                  </div>
+                  <div className="bg-zinc-950/60 p-2 rounded border border-zinc-800/50">
+                    <span className="text-zinc-500 block text-[10px] uppercase">Timing</span>
+                    <span className="text-zinc-300 font-medium">{m.timing_window}</span>
+                  </div>
+                </div>
+
+                <div className="text-xs text-zinc-400 bg-zinc-950/40 p-2.5 rounded border border-zinc-800/40 leading-relaxed mb-2.5">
+                  {m.mo_summary}
+                </div>
+
+                <div className="flex flex-wrap gap-1">
+                  {(m.signature_traits || []).slice(0, 3).map((t: string, i: number) => (
+                    <span key={i} className="text-[11px] bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LegalTab({ caseId }: { caseId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [advisoryData, setAdvisoryData] = useState<any>(null);
+  const [error, setError] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState("all");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [allSections, setAllSections] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadLegalData();
+  }, [caseId]);
+
+  async function loadLegalData() {
+    setLoading(true);
+    setError("");
+    try {
+      const [adv, sections] = await Promise.all([
+        api.getLegalAdvisory(caseId),
+        api.getLegalSections(),
+      ]);
+      setAdvisoryData(adv);
+      setAllSections(sections);
+      setSearchResults(sections);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load legal intelligence");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function executeSearch(query: string, filterAct: string) {
+    setSearchBusy(true);
+    try {
+      const actParam = filterAct === "all" ? undefined : filterAct;
+      if (!query.trim() && filterAct === "all") {
+        setSearchResults(allSections);
+      } else {
+        const res = await api.searchLegal(query.trim() || (filterAct !== "all" ? filterAct : "statute"), actParam);
+        setSearchResults(res);
+      }
+    } catch (e) {
+      console.error("Legal search failed:", e);
+    } finally {
+      setSearchBusy(false);
+    }
+  }
+
+  function handleFilterClick(filterKey: string, filterLabel: string) {
+    setSelectedFilter(filterKey);
+    executeSearch(searchQuery, filterKey === "all" ? "all" : filterLabel);
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-zinc-500">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-indigo-500 border-zinc-800 mb-3" />
+        <div className="text-sm">Synthesizing statutory charges and auditing evidentiary compliance...</div>
+      </div>
+    );
+  }
+
+  const adv = advisoryData?.advisory;
+  const compliance = advisoryData?.compliance_audit;
+  const recommendedSections = adv?.recommended_sections || [];
+  const demographic = adv?.accused_demographic_assessment;
+  const complianceItems = compliance?.compliance_items || [];
+
+  return (
+    <div className="space-y-8 max-w-6xl">
+      {/* Header */}
+      <div className="border-b border-zinc-800 pb-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-white">Legal Section & Statutory FIR Co-pilot</h2>
+          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+            BNS / BNSS / BSA 2023 Compliant
+          </span>
+        </div>
+        <p className="text-xs text-zinc-400 mt-1">
+          Automated penal charge recommendation mapped to evidentiary findings, age-based statutory bifurcations (JJ Act & POCSO), and strict BSA Section 63 electronic certification audit.
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded border border-red-800 bg-red-950 text-red-300 text-sm">{error}</div>
+      )}
+
+      {/* SECTION 1: Statutory FIR Charge Recommendations */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+            <span>⚖️</span> Recommended FIR Penal Sections ({recommendedSections.length})
+          </h3>
+          <span className="text-xs text-zinc-500">Drafted in compliance with BNSS Section 173</span>
+        </div>
+
+        {/* Accused Demographics Assessment Banner */}
+        {demographic && (
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-3.5 flex items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">👤</span>
+              <div>
+                <span className="text-zinc-400">Suspect Demographics Assessment: </span>
+                <span className="text-zinc-200 font-semibold">{demographic.age_assessed}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">Procedural Regime:</span>
+              <span className="bg-zinc-800 px-2.5 py-1 rounded text-zinc-300 font-medium">
+                {demographic.applicable_regime}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Recommended Sections Cards */}
+        <div className="grid grid-cols-1 gap-4">
+          {recommendedSections.map((sec: any, idx: number) => (
+            <div
+              key={idx}
+              className="bg-zinc-900/70 border border-zinc-800 rounded-lg p-5 transition-all hover:border-zinc-700 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-indigo-950/80 text-indigo-300 border border-indigo-800 px-2.5 py-0.5 rounded text-xs font-bold tracking-wide">
+                      {sec.act} — Section {sec.section}
+                    </span>
+                    {sec.cognizable && (
+                      <span className="bg-rose-950/70 text-rose-300 border border-rose-800/60 px-2 py-0.5 rounded text-[10px] font-bold">
+                        COGNIZABLE
+                      </span>
+                    )}
+                    {sec.bailable === false ? (
+                      <span className="bg-purple-950/70 text-purple-300 border border-purple-800/60 px-2 py-0.5 rounded text-[10px] font-bold">
+                        NON-BAILABLE
+                      </span>
+                    ) : (
+                      <span className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded text-[10px]">
+                        BAILABLE
+                      </span>
+                    )}
+                    <span className="bg-amber-950/50 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded text-[10px]">
+                      {sec.punishment}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-semibold text-white mt-1.5">{sec.title}</h4>
+                </div>
+                <div className="text-right text-xs text-zinc-400 shrink-0">
+                  <span className="text-zinc-500 block text-[10px] uppercase">Triable By</span>
+                  <span className="font-medium text-zinc-300">{sec.triable_by}</span>
+                </div>
+              </div>
+
+              {/* Justification based on case facts */}
+              <div className="text-xs text-zinc-300 bg-zinc-950/60 p-3 rounded border border-zinc-800/60 leading-relaxed mb-3">
+                <span className="text-indigo-400 font-semibold block mb-0.5">Evidentiary Justification:</span>
+                {sec.justification}
+              </div>
+
+              {/* Statutory Ingredients Checklist */}
+              <div>
+                <span className="text-[11px] uppercase text-zinc-500 font-semibold block mb-1.5">
+                  Statutory Ingredients Satisfied:
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  {(sec.statutory_ingredients_met || []).map((ing: string, i: number) => (
+                    <div key={i} className="flex items-start gap-1.5 bg-zinc-950/40 p-2 rounded border border-zinc-900">
+                      <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                      <span className="text-zinc-300">{ing}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION 2: Evidentiary Admissibility & Procedural Safeguards Audit */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+            <span>🛡️</span> Procedural & Evidentiary Admissibility Audit ({complianceItems.length})
+          </h3>
+          <span className="text-xs text-zinc-500">Judicial compliance with Supreme Court mandates</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {complianceItems.map((item: any, idx: number) => {
+            const isCrit = item.severity === "CRITICAL" || item.severity === "HIGH";
+            return (
+              <div
+                key={idx}
+                className={`bg-zinc-900/60 border rounded-lg p-4 ${
+                  isCrit ? "border-amber-900/60 bg-amber-950/10" : "border-zinc-800"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <h4 className="text-xs font-semibold text-white">{item.rule}</h4>
+                    <span className="text-[11px] text-zinc-400 block">{item.statute}</span>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                      item.status === "SATISFIED" || item.status === "COMPLIANT" || item.status === "ADULT_REGIME_CONFIRMED"
+                        ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                        : "bg-amber-950 text-amber-300 border border-amber-800"
+                    }`}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed mb-2.5">{item.details}</p>
+                <div className="text-[11px] text-zinc-500 bg-zinc-950/50 px-2.5 py-1.5 rounded border border-zinc-900 flex items-center justify-between">
+                  <span>Mandatory Statutory Form:</span>
+                  <code className="text-zinc-300 font-mono text-[10px]">{item.statutory_form}</code>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* SECTION 3: Universal Legal Intelligence Search & Corpus Explorer */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+            <span>🔍</span> Universal Legal Corpus Search & Precedents
+          </h3>
+          <span className="text-xs text-zinc-500">20+ Indexed Statutes & Supreme Court Rulings</span>
+        </div>
+
+        {/* Search Input Bar */}
+        <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 space-y-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeSearch(searchQuery, selectedFilter === "all" ? "all" : selectedFilter);
+            }}
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search section number (e.g. BNS 331, NDPS 21), legal doctrine, or natural query..."
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+            />
+            <button
+              type="submit"
+              disabled={searchBusy}
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded text-xs font-semibold transition-colors"
+            >
+              {searchBusy ? "Searching..." : "Search Corpus"}
+            </button>
+          </form>
+
+          {/* Filter Chips */}
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {[
+              { id: "all", label: "All Statutes" },
+              { id: "bns", label: "BNS 2023" },
+              { id: "bnss", label: "BNSS 2023" },
+              { id: "bsa", label: "BSA 2023" },
+              { id: "ndps", label: "NDPS Act" },
+              { id: "juvenile", label: "JJ Act / POCSO" },
+              { id: "precedent", label: "Landmark Precedents" },
+            ].map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => handleFilterClick(chip.id, chip.label)}
+                className={`px-3 py-1 rounded text-[11px] font-medium transition-colors ${
+                  selectedFilter === chip.id
+                    ? "bg-indigo-700 text-white"
+                    : "bg-zinc-950 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Results Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {searchResults.map((doc: any) => (
+            <div
+              key={doc.id}
+              className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 space-y-2 hover:border-zinc-750 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
+                    {doc.act || "Statutory Code"}
+                  </span>
+                  <h4 className="text-sm font-semibold text-white">{doc.title}</h4>
+                </div>
+                {doc.cognizable !== undefined && doc.cognizable !== null && (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                      doc.cognizable ? "bg-rose-950/80 text-rose-300" : "bg-zinc-800 text-zinc-400"
+                    }`}
+                  >
+                    {doc.cognizable ? "COGNIZABLE" : "NON-COGNIZABLE"}
+                  </span>
+                )}
+              </div>
+
+              {doc.punishment && (
+                <div className="text-[11px] text-amber-300/90 font-medium">
+                  ⚖️ {doc.punishment}
+                </div>
+              )}
+
+              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-2.5 rounded border border-zinc-900">
+                {doc.text}
+              </p>
+
+              {doc.ingredients && doc.ingredients.length > 0 && (
+                <div className="pt-1">
+                  <span className="text-[10px] uppercase text-zinc-500 font-semibold block mb-1">
+                    Key Legal Ingredients:
+                  </span>
+                  <ul className="space-y-1 text-[11px] text-zinc-400">
+                    {doc.ingredients.slice(0, 3).map((ing: string, i: number) => (
+                      <li key={i} className="flex items-start gap-1">
+                        <span className="text-indigo-400">•</span>
+                        <span>{ing}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

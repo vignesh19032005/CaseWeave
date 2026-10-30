@@ -1,0 +1,19 @@
+{
+  "id": "SC-PREC-ARNESH-KUMAR",
+  "act": "Supreme Court of India Precedent",
+  "section": "Criminal Appeal No. 1277 of 2014",
+  "title": "Arnesh Kumar v. State of Bihar (2014) 8 SCC 273",
+  "topic": "Arrest safeguards for offences punishable with imprisonment less than 7 years",
+  "type": "precedent",
+  "cognizable": null,
+  "bailable": null,
+  "punishment": "Mandatory Judicial Directive to Police and Magistrates",
+  "triable_by": "All Police Stations and Magistrates",
+  "ingredients": [
+    "Police shall not automatically arrest accused when offence is punishable with imprisonment up to 7 years",
+    "Investigating officer must fill mandatory checklist under Section 41 CrPC / Section 35 BNSS",
+    "Magistrate shall not authorize detention mechanically without recording reasons",
+    "Notice of appearance must be served within two weeks of case institution"
+  ],
+  "text": "The Supreme Court issued mandatory guidelines directing that police officers shall not automatically arrest when a case is registered under an offence punishable with imprisonment for a term which may be less than seven years or which may extend to seven years. Police officers must be satisfied that arrest is necessary under specified statutory criteria, record reasons in writing, and submit the checklist before the Magistrate."
+}
