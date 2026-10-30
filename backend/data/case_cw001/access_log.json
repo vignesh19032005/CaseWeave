@@ -1,0 +1,11 @@
+{
+  "source": "Srinivasan Logistics Warehouse — Side Door Access Controller",
+  "device_id": "ACC-DOOR-02",
+  "log_note": "Timestamps from access controller internal clock. Clock sync status unknown — not verified against NTP at time of incident.",
+  "events": [
+    { "timestamp": "2026-10-19T20:55:00", "event": "door_closed", "location": "side_entrance" },
+    { "timestamp": "2026-10-19T21:14:00", "event": "door_opened", "location": "side_entrance" },
+    { "timestamp": "2026-10-19T21:16:30", "event": "door_closed", "location": "side_entrance" },
+    { "timestamp": "2026-10-19T23:40:00", "event": "door_opened", "location": "side_entrance" }
+  ]
+}

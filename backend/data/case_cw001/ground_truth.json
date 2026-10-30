@@ -1,0 +1,19 @@
+{
+  "case_id": "CW-001",
+  "expected_observation_count_min": 5,
+  "expected_timeline_event_count_min": 4,
+  "planted_discrepancy": {
+    "claim_a": "Access log device ACC-DOOR-02 records side door opening at 21:14:00",
+    "source_a": "access_log.json",
+    "claim_b": "CCTV camera CAM-02 overlay shows person entering at approximately 21:17:02-21:17:06",
+    "source_b": "cctv_description.txt",
+    "claim_c": "Witness R. Kumaran reports seeing entry around 21:10 (+/- a few minutes)",
+    "source_c": "witness_statement_1.txt",
+    "claim_d": "Witness P. Elango checked his phone and saw 21:21, door already open",
+    "source_d": "witness_statement_2.txt",
+    "nature_of_conflict": "Four sources report four different times (21:10, 21:14, 21:17, 21:21) for what may be the same entry event, within an ~11 minute spread",
+    "correct_resolution_hint": "Access log explicitly notes clock sync unverified; CCTV camera clock last synced 14 days prior; both witnesses report approximate times. No single source should be treated as ground truth without corroboration."
+  },
+  "missing_evidence_expected_flag": "Interior motion-sensor log not yet retrieved from building management",
+  "legal_question_for_rag_test": "What does Indian law require for an access-control log or CCTV timestamp to be admissible as electronic evidence, given that clock synchronization is unverified?"
+}

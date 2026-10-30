@@ -1,0 +1,31 @@
+# Core API & Web Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+python-multipart>=0.0.12
+slowapi>=0.1.9
+
+# Database & Cache
+pymysql>=1.1.0
+cryptography>=43.0.0
+redis>=5.0.0
+rq>=1.16.0
+
+# Authentication & Security
+pyjwt>=2.8.0
+bcrypt>=4.1.0
+
+# Document & Media Extraction
+pymupdf>=1.24.0
+pytesseract>=0.3.10
+pillow>=10.0.0
+
+# Vector Database & Embeddings (Legal RAG)
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+
+# PDF Report & Certificate Generation
+reportlab>=4.2.0
+
+# Testing
+pytest>=8.0.0

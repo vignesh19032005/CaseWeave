@@ -1,0 +1,12 @@
+CCTV METADATA (describing planned real footage — placeholder until real clip is filmed and OCR/frame-extracted; the pipeline treats this as the source text until then)
+Case: CW-001
+Camera: CAM-02, Side Entrance, Srinivasan Logistics Warehouse
+Camera clock overlay note: camera internal clock last synced 14 days before incident; drift unverified.
+
+Frame-level description (manually logged, standing in for Muse Spark vision output
+until a real clip is filmed and fed through the extraction pipeline):
+
+00:00 (camera overlay reads 21:17:02) — A person wearing a dark jacket enters the
+frame from the left, approaches the side entrance door.
+00:04 (camera overlay reads 21:17:06) — Person opens the door and enters the warehouse.
+00:41 (camera overlay reads 21:17:43) — Door is seen closing from inside.

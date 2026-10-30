@@ -26,7 +26,7 @@ backend/caseweave.jsonl
 backend/chroma_store/
 backend/object_store/
 backend/models/
-backend/data/
+# Note: backend/data/case_cw001 is included for sample data & tests
 
 # Generated Artifacts & Reports
 backend/output_report_*

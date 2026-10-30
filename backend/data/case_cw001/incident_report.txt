@@ -1,0 +1,27 @@
+INCIDENT REPORT
+Case: CW-001
+Reporting Officer: (fictional) SI D. Vasanth
+Date filed: 2026-10-20
+
+Summary: On the night of 19 October 2026, a complaint was lodged by the warehouse
+supervisor of Srinivasan Logistics that one sealed carton (Item ref: SL-INV-224,
+declared contents: electronic components) was found missing from the storage
+rack nearest the side entrance during the morning stock check on 20 October 2026.
+
+Evidence reviewed: CCTV footage from Camera CAM-02 (side entrance), side-door
+access control log (device ACC-DOOR-02), two witness statements (R. Kumaran,
+P. Elango), and a visual inspection of the storage rack and door area.
+
+Observations: The access log shows the side door opening at 21:14 and again at
+23:40. The CCTV camera overlay places a person entering at approximately 21:17.
+Witness R. Kumaran reports seeing a person enter the side entrance "around
+9:10 PM, maybe a few minutes before or after." Witness P. Elango reports the
+door being open and checked the time on his phone at 9:21 PM.
+
+Limitation: no camera was present covering the interior storage rack itself, so
+there is no direct visual record of the carton being removed. The exact point
+at which the carton went missing cannot be established from video alone.
+
+Missing evidence: the warehouse's interior motion-sensor log, which supervisor
+states exists but has not yet been retrieved from building management at time
+of this report.
