@@ -69,20 +69,51 @@ def extract_observations_from_source(evidence_id: str, filename: str, evidence_t
     return observations
 
 
-def run_observation_engine(case_id: str, evidence_items: list):
+def run_observation_engine(case_id: str, evidence_items: list, resume_checkpoint: bool = True):
     conn = get_conn()
     cur = conn.cursor()
-    # Make a re-run of /process idempotent instead of accumulating
-    # duplicate observations on top of a prior run's output (each
-    # observation gets a fresh uuid, so INSERT OR REPLACE never collides
-    # with the old rows — they'd otherwise just pile up).
-    cur.execute("DELETE FROM observations WHERE case_id=?", (case_id,))
+
+    # Mid-run checkpointing:
+    # If resuming from checkpoint, check which evidence items already have observations
+    # persisted in the database. This saves valuable tokens and avoids redundant LLM
+    # calls if a previous run was interrupted or crashed.
+    cur.execute("SELECT DISTINCT source_evidence_id FROM observations WHERE case_id=?", (case_id,))
+    completed_evidence_ids = {r["source_evidence_id"] for r in cur.fetchall()}
+
+    if not resume_checkpoint or not completed_evidence_ids:
+        cur.execute("DELETE FROM observations WHERE case_id=?", (case_id,))
+        completed_evidence_ids = set()
+
     all_observations = []
+    # If resuming, load previously extracted observations for this case
+    if completed_evidence_ids:
+        cur.execute("SELECT * FROM observations WHERE case_id=?", (case_id,))
+        existing_rows = cur.fetchall()
+        for r in existing_rows:
+            all_observations.append({
+                "observation_id": r["observation_id"],
+                "description": r["description"],
+                "classification": r["classification"],
+                "source_evidence_id": r["source_evidence_id"],
+                "source_locator": r["source_locator"],
+                "extracted_time": r["extracted_time"],
+                "limitations": json.loads(r["limitations"]) if isinstance(r["limitations"], str) else (r["limitations"] or []),
+                "subject": r["subject"],
+                "action": r["action"],
+                "location": r["location"],
+                "time_claim": r["time_claim"],
+                "llm_provider": "checkpoint",
+            })
+
     providers_used = set()
 
     for item in evidence_items:
-        path: Path = item["path"]
         evidence_id = item["evidence_id"]
+        path: Path = item["path"]
+
+        # Checkpoint hit: skip LLM call if this exhibit was already processed
+        if resume_checkpoint and evidence_id in completed_evidence_ids:
+            continue
 
         # Media evidence (PDF/audio/video/image) arrives pre-extracted by
         # Stage 1 (pipeline/extract.evidence_to_text); plain text is read here.

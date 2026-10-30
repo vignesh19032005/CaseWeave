@@ -111,7 +111,9 @@ def run_process_job(case_id: str, legal_query: str | None):
     if not evidence_items:
         raise ValueError("no evidence with extractable content yet")
 
-    observations = run_observation_engine(case_id, evidence_items)
+    # Mid-run checkpointing: resumes any previously extracted observations if a prior
+    # job was terminated/restarted mid-pipeline, avoiding redundant LLM costs
+    observations = run_observation_engine(case_id, evidence_items, resume_checkpoint=True)
     timeline_events = build_timeline(case_id)
 
     # Entity resolution runs before discrepancy detection so its output
