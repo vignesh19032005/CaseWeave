@@ -29,3 +29,4 @@ reportlab>=4.2.0
 
 # Testing
 pytest>=8.0.0
+
