@@ -37,6 +37,7 @@ backend/timeline_*
 backend/*.log
 backend/download_*.log
 frontend/frontend.log
+frontend/test-screenshots/
 
 # Node / Next.js
 frontend/node_modules/

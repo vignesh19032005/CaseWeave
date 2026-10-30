@@ -521,6 +521,28 @@ function EvidenceExplorer({
   const [custodyFor, setCustodyFor] = useState<string | null>(null);
   const [certBusy, setCertBusy] = useState<string | null>(null);
   const [certError, setCertError] = useState("");
+  const [segmentingId, setSegmentingId] = useState<string | null>(null);
+  const [segmentPrompt, setSegmentPrompt] = useState<Record<string, string>>({});
+  const [segmentResults, setSegmentResults] = useState<Record<string, any>>({});
+  const [segmentError, setSegmentError] = useState<Record<string, string>>({});
+
+  async function handleSegment(evidenceId: string) {
+    const prompt = segmentPrompt[evidenceId]?.trim();
+    if (!prompt) return;
+    setSegmentingId(evidenceId);
+    setSegmentError((prev) => ({ ...prev, [evidenceId]: "" }));
+    try {
+      const res = await api.segmentEvidence(caseId, evidenceId, prompt);
+      setSegmentResults((prev) => ({ ...prev, [evidenceId]: res }));
+    } catch (e) {
+      setSegmentError((prev) => ({
+        ...prev,
+        [evidenceId]: e instanceof ApiError ? e.message : "Segmentation request failed",
+      }));
+    } finally {
+      setSegmentingId(null);
+    }
+  }
 
   async function downloadCertificate(evidenceId: string) {
     setCertBusy(evidenceId);
@@ -596,9 +618,49 @@ function EvidenceExplorer({
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {images.map((img) => (
-              <div key={img.evidence_id} className="border border-zinc-900 rounded-lg p-2">
-                <EvidenceImage caseId={caseId} evidenceId={img.evidence_id} alt={img.filename} />
-                <div className="text-[11px] text-zinc-400 truncate mt-1">{img.filename}</div>
+              <div key={img.evidence_id} className="border border-zinc-900 rounded-lg p-2.5 flex flex-col justify-between">
+                <div>
+                  <EvidenceImage caseId={caseId} evidenceId={img.evidence_id} alt={img.filename} />
+                  <div className="text-[11px] text-zinc-400 truncate mt-1.5 font-medium">{img.filename}</div>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-zinc-900/80">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">SAM 3.1 Segment</div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="e.g. chair, box, laptop"
+                      value={segmentPrompt[img.evidence_id] || ""}
+                      onChange={(e) =>
+                        setSegmentPrompt((prev) => ({ ...prev, [img.evidence_id]: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSegment(img.evidence_id);
+                      }}
+                      className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] w-full focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      onClick={() => handleSegment(img.evidence_id)}
+                      disabled={segmentingId === img.evidence_id || !segmentPrompt[img.evidence_id]?.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-2 py-1 rounded text-[11px] font-medium shrink-0"
+                    >
+                      {segmentingId === img.evidence_id ? "..." : "Segment"}
+                    </button>
+                  </div>
+                  {segmentError[img.evidence_id] && (
+                    <div className="text-[10px] text-red-400 mt-1">{segmentError[img.evidence_id]}</div>
+                  )}
+                  {segmentResults[img.evidence_id] && (
+                    <div className="mt-2 p-1.5 bg-zinc-950/80 rounded border border-zinc-800 text-[10px] text-zinc-400">
+                      <div className="text-emerald-400 font-medium">
+                        Found {segmentResults[img.evidence_id].matches?.length || 0} match(es)
+                      </div>
+                      <div className="text-[9px] text-zinc-500 truncate mt-0.5 font-mono">
+                        {segmentResults[img.evidence_id].raw_response_text || "Masks computed"}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

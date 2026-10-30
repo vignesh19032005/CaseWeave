@@ -64,9 +64,12 @@ def get_secret(key: str) -> str:
     string if not set anywhere."""
     if os.environ.get(key):
         return os.environ[key]
-    value = keyring.get_password(SERVICE_NAME, key)
-    if value:
-        return value
+    try:
+        value = keyring.get_password(SERVICE_NAME, key)
+        if value:
+            return value
+    except Exception:
+        pass
     return _read_env_file().get(key, "")
 
 

@@ -72,7 +72,14 @@ def run():
 
     if conflicts:
         print(f"  [4a] Marking conflict {conflicts[0]['conflict_id']} as 'confirmed'...")
-        update_review_status(CASE_ID, conflicts[0]["conflict_id"], "confirmed")
+        update_review_status(
+            CASE_ID,
+            conflicts[0]["conflict_id"],
+            "confirmed",
+            reason="Verified against physical log disparity during testing",
+            actor_username="test_runner",
+            actor_role="reviewer",
+        )
     print()
 
     print("[Stage 5] Legal retrieval...")

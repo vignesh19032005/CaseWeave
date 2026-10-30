@@ -188,29 +188,37 @@ def _debate_adjudicate(a: dict, b: dict, entity_context: str, live: bool = False
         claims_text += f"\n\n{entity_context}"
 
     if live:
-        print(f"\n  {'─'*70}")
-        print(f"  DEBATE: {a['description'][:60]}  vs  {b['description'][:60]}")
-        print(f"  {'─'*70}")
+        def _safe_print(text: str, **kwargs):
+            try:
+                print(text, **kwargs)
+            except UnicodeEncodeError:
+                encoding = sys.stdout.encoding or "utf-8"
+                clean = text.encode(encoding, errors="replace").decode(encoding)
+                print(clean, **kwargs)
+
+        _safe_print(f"\n  {'-'*70}")
+        _safe_print(f"  DEBATE: {a['description'][:60]}  vs  {b['description'][:60]}")
+        _safe_print(f"  {'-'*70}")
         if entity_context:
-            print(f"  [entity context] {entity_context}")
+            _safe_print(f"  [entity context] {entity_context}")
 
     if live:
-        print("  [Prosecutor is arguing...]", end=" ", flush=True)
+        _safe_print("  [Prosecutor is arguing...]", end=" ", flush=True)
     provider, prosecutor_result = chat_json(PROSECUTOR_SYSTEM_PROMPT, claims_text, max_tokens=600)
     providers_used.add(provider)
     if live:
-        print(f"({provider})")
-        print(f"  PROSECUTOR: {prosecutor_result.get('argument', '')}")
+        _safe_print(f"({provider})")
+        _safe_print(f"  PROSECUTOR: {prosecutor_result.get('argument', '')}")
     time.sleep(2)
 
     defender_prompt = f"{claims_text}\n\nProsecutor's argument (for your review, to counter if you can): {prosecutor_result.get('argument', '')}"
     if live:
-        print("  [Defender is arguing...]", end=" ", flush=True)
+        _safe_print("  [Defender is arguing...]", end=" ", flush=True)
     provider, defender_result = chat_json(DEFENDER_SYSTEM_PROMPT, defender_prompt, max_tokens=600)
     providers_used.add(provider)
     if live:
-        print(f"({provider})")
-        print(f"  DEFENDER: {defender_result.get('argument', '')}")
+        _safe_print(f"({provider})")
+        _safe_print(f"  DEFENDER: {defender_result.get('argument', '')}")
     time.sleep(2)
 
     judge_prompt = (
@@ -220,16 +228,16 @@ def _debate_adjudicate(a: dict, b: dict, entity_context: str, live: bool = False
         f"Proposed verification question from Prosecutor (use/refine if ruling for conflict): {prosecutor_result.get('proposed_verification_question', '')}"
     )
     if live:
-        print("  [Judge is deliberating...]", end=" ", flush=True)
+        _safe_print("  [Judge is deliberating...]", end=" ", flush=True)
     provider, verdict = chat_json(JUDGE_SYSTEM_PROMPT, judge_prompt, max_tokens=400)
     providers_used.add(provider)
     if live:
-        print(f"({provider})")
-        print(f"  JUDGE VERDICT: {verdict.get('relationship', '').upper()}")
-        print(f"  JUDGE REASON: {verdict.get('reason', '')}")
+        _safe_print(f"({provider})")
+        _safe_print(f"  JUDGE VERDICT: {verdict.get('relationship', '').upper()}")
+        _safe_print(f"  JUDGE REASON: {verdict.get('reason', '')}")
         if verdict.get("verification_question"):
-            print(f"  VERIFICATION QUESTION: {verdict.get('verification_question', '')}")
-        print(f"  {'─'*70}\n")
+            _safe_print(f"  VERIFICATION QUESTION: {verdict.get('verification_question', '')}")
+        _safe_print(f"  {'-'*70}\n")
     time.sleep(2)
 
     transcript = {

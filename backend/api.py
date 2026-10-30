@@ -520,6 +520,34 @@ def create_scene(case_id: str, body: SceneRequest, user: dict = Depends(auth.get
     return result
 
 
+# ----------------------------------------------------------- Segmentation (Stage 8) ----
+
+class SegmentRequest(BaseModel):
+    prompt: str
+
+
+@app.post("/cases/{case_id}/evidence/{evidence_id}/segment")
+def segment_evidence(case_id: str, evidence_id: str, body: SegmentRequest, user: dict = Depends(auth.get_current_user)):
+    """Stage 8: SAM 3.1 object segmentation on an image evidence item."""
+    row = _get_evidence_row(case_id, evidence_id)
+    if row.get("evidence_type") != "image":
+        raise HTTPException(400, "Segmentation is only supported on image evidence")
+
+    from storage import get_object_path
+    from pipeline.segment import segment_image
+
+    img_path = get_object_path(case_id, evidence_id, row["filename"])
+    try:
+        res = segment_image(img_path, body.prompt)
+    except Exception as e:
+        raise HTTPException(502, f"Segmentation inference failed: {e}")
+
+    conn = get_conn()
+    append_audit_event(conn, case_id, user["role"], "image_segmented", f"{evidence_id}:{body.prompt}")
+    conn.close()
+    return res
+
+
 @app.get("/cases/{case_id}/evidence/{evidence_id}/certificate")
 def download_evidence_certificate(case_id: str, evidence_id: str, user: dict = Depends(auth.get_current_user)):
     auth.enforce_permission(user, "export_report")

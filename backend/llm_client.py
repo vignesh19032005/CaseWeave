@@ -267,7 +267,7 @@ def chat(system: str, prompt: str, max_tokens: int = 2048) -> tuple[str, str]:
             errors.append(f"{name}: {e}")
             log_event(_log, "warning", "llm provider unavailable", provider=name, error=str(e))
             continue
-        except (urllib.error.URLError, urllib.error.HTTPError, KeyError, json.JSONDecodeError) as e:
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, KeyError, json.JSONDecodeError) as e:
             errors.append(f"{name}: call failed — {e}")
             log_event(_log, "error", "llm provider call failed", provider=name, error=str(e))
             continue

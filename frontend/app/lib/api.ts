@@ -175,6 +175,13 @@ export const api = {
 
   deleteCase: (caseId: string) => request(`/cases/${caseId}`, { method: "DELETE" }),
 
+  segmentEvidence: (caseId: string, evidenceId: string, prompt: string) =>
+    request(`/cases/${caseId}/evidence/${evidenceId}/segment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    }),
+
   getReport: (caseId: string) => request(`/cases/${caseId}/report`),
   downloadReportPdf: async (caseId: string) => {
     const token = getToken();
