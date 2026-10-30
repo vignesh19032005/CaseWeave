@@ -27,15 +27,17 @@ GREY = colors.HexColor("#52525b")
 LIGHT_GREY = colors.HexColor("#f4f4f5")
 
 _styles = getSampleStyleSheet()
-_styles.add(ParagraphStyle("CWTitle", parent=_styles["Title"], textColor=NAVY, spaceAfter=4))
-_styles.add(ParagraphStyle("CWMeta", parent=_styles["Normal"], textColor=GREY, fontSize=9, spaceAfter=14))
-_styles.add(ParagraphStyle("CWH2", parent=_styles["Heading2"], textColor=NAVY, spaceBefore=16, spaceAfter=8,
+_styles.add(ParagraphStyle("CWTitle", parent=_styles["Title"], textColor=NAVY, fontSize=18, leading=22, spaceAfter=4))
+_styles.add(ParagraphStyle("CWMeta", parent=_styles["Normal"], textColor=GREY, fontSize=10, leading=14, spaceAfter=8))
+_styles.add(ParagraphStyle("CWH2", parent=_styles["Heading2"], textColor=NAVY, fontSize=12.5, leading=16, spaceBefore=16, spaceAfter=8,
                            borderPadding=(0, 0, 4, 0)))
 _styles.add(ParagraphStyle("CWH3", parent=_styles["Heading3"], textColor=colors.HexColor("#27272a"),
-                           spaceBefore=10, spaceAfter=4, fontSize=10.5))
-_styles.add(ParagraphStyle("CWBody", parent=_styles["Normal"], fontSize=9.5, leading=14, alignment=TA_LEFT))
-_styles.add(ParagraphStyle("CWSmall", parent=_styles["Normal"], fontSize=8, leading=11, textColor=GREY))
-_styles.add(ParagraphStyle("CWWarn", parent=_styles["Normal"], fontSize=8.5, leading=12, textColor=AMBER))
+                           spaceBefore=10, spaceAfter=4, fontSize=11, leading=14))
+_styles.add(ParagraphStyle("CWBody", parent=_styles["Normal"], fontSize=10, leading=15, alignment=TA_LEFT))
+_styles.add(ParagraphStyle("CWSmall", parent=_styles["Normal"], fontSize=8.5, leading=12, textColor=GREY))
+_styles.add(ParagraphStyle("CWWarn", parent=_styles["Normal"], fontSize=9, leading=13, textColor=AMBER))
+_styles.add(ParagraphStyle("CWCell", parent=_styles["Normal"], fontSize=8.5, leading=11, alignment=TA_LEFT))
+_styles.add(ParagraphStyle("CWCellHeader", parent=_styles["Normal"], fontSize=9, leading=12, textColor=colors.white, fontName="Helvetica-Bold"))
 
 
 def esc(text) -> str:
@@ -73,7 +75,7 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
 
     doc = SimpleDocTemplate(
         str(out_path), pagesize=A4,
-        leftMargin=20 * mm, rightMargin=20 * mm, topMargin=18 * mm, bottomMargin=18 * mm,
+        leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=15 * mm,
         title=f"CaseWeave Report — {case['title']}",
     )
     story = []
@@ -87,57 +89,76 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
     # --- 1. Overview ---
     story.append(_p("1. Case Overview", "CWH2"))
     overview_rows = [
-        ["Case opened", case["created_at"][:19].replace("T", " ")],
-        ["Evidence items", str(len(evidence))],
-        ["Observations extracted", str(len(observations))],
-        ["Timeline events", str(len(timeline_events))],
-        ["Conflicts detected", str(len(conflicts))],
+        [_p("<b>Case opened</b>", "CWBody"), _p(case["created_at"][:19].replace("T", " "), "CWBody")],
+        [_p("<b>Evidence items</b>", "CWBody"), _p(str(len(evidence)), "CWBody")],
+        [_p("<b>Observations extracted</b>", "CWBody"), _p(str(len(observations)), "CWBody")],
+        [_p("<b>Timeline events</b>", "CWBody"), _p(str(len(timeline_events)), "CWBody")],
+        [_p("<b>Conflicts detected</b>", "CWBody"), _p(str(len(conflicts)), "CWBody")],
     ]
-    t = Table(overview_rows, colWidths=[55 * mm, 100 * mm])
+    t = Table(overview_rows, colWidths=[60 * mm, 120 * mm])
     t.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
-        ("TEXTCOLOR", (0, 0), (0, -1), GREY),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LINEBELOW", (0, 0), (-1, -2), 0.4, colors.HexColor("#e4e4e7")),
     ]))
     story.append(t)
 
     # --- 2. Evidence inventory ---
     story.append(_p("2. Evidence Inventory", "CWH2"))
-    rows = [["ID", "Filename", "Type", "SHA-256"]]
+    rows = [[
+        _p("ID", "CWCellHeader"),
+        _p("Filename", "CWCellHeader"),
+        _p("Type", "CWCellHeader"),
+        _p("SHA-256", "CWCellHeader"),
+    ]]
     for e in evidence:
-        rows.append([esc(e["evidence_id"]), esc(e["filename"]), esc(e["evidence_type"]), esc(e["file_hash"][:16]) + "..."])
-    ev_table = Table(rows, colWidths=[32 * mm, 50 * mm, 25 * mm, 48 * mm], repeatRows=1)
+        rows.append([
+            _p(f"<font size=7.5>{esc(e['evidence_id'])}</font>", "CWCell"),
+            _p(esc(e["filename"]), "CWCell"),
+            _p(esc(e["evidence_type"]), "CWCell"),
+            _p(f"<font size=7.5>{esc(e['file_hash'][:18])}...</font>", "CWCell"),
+        ])
+    ev_table = Table(rows, colWidths=[36 * mm, 64 * mm, 32 * mm, 48 * mm], repeatRows=1)
     ev_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d4d4d8")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(ev_table)
 
     # --- 3. Timeline ---
     story.append(_p("3. Evidence-Linked Chronology", "CWH2"))
-    rows = [["Time", "Class", "Description", "Source"]]
+    rows = [[
+        _p("Time", "CWCellHeader"),
+        _p("Class", "CWCellHeader"),
+        _p("Description", "CWCellHeader"),
+        _p("Source", "CWCellHeader"),
+    ]]
     for ev in timeline_events:
-        rows.append([esc(ev["time"]) or "—", esc(ev["classification"]), esc(ev["description"][:90]), esc(ev["source_evidence_id"])])
-    tl_table = Table(rows, colWidths=[16 * mm, 20 * mm, 90 * mm, 29 * mm], repeatRows=1)
+        time_val = ev.get("time") or ev.get("event_time") or "—"
+        class_val = ev.get("classification") or "observed"
+        source_val = ev.get("source_evidence_id") or ev.get("source_observation_id") or "—"
+        rows.append([
+            _p(esc(time_val), "CWCell"),
+            _p(esc(class_val), "CWCell"),
+            _p(esc(ev.get("description", "")), "CWCell"),
+            _p(f"<font size=7>{esc(source_val)}</font>", "CWCell"),
+        ])
+    tl_table = Table(rows, colWidths=[18 * mm, 20 * mm, 98 * mm, 44 * mm], repeatRows=1)
     tl_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d4d4d8")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(tl_table)
     story.append(PageBreak())
@@ -152,7 +173,7 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
                  [_p(f"<b>Claim B</b> ({esc(c['time_b'])}, {esc(c['source_b'])})<br/>{esc(c['claim_b'])}", "CWBody")],
                  [_p(f"<b>Nature of conflict:</b> {esc(c.get('nature_of_conflict', ''))}", "CWBody")],
                  [_p(f"<b>Recommended next step:</b> {esc(c['question'])}", "CWWarn")]],
-                colWidths=[155 * mm],
+                colWidths=[180 * mm],
             )
             box.setStyle(TableStyle([
                 ("BOX", (0, 0), (-1, -1), 0.8, RED),
@@ -220,20 +241,66 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
         story.append(_p("No legal query was run for this report.", "CWBody"))
 
     # --- 8. Audit trail ---
-    story.append(_p("8. Audit Trail", "CWH2"))
+    story.append(_p("8. Tamper-Evident Audit Trail & Chain of Custody", "CWH2"))
     chain_color = "CWBody" if chain_ok else "CWWarn"
-    story.append(_p(f"Total audit events logged: {audit_count}", "CWBody"))
-    story.append(_p(f"Hash-chain integrity check: {'PASSED' if chain_ok else 'FAILED'}", chain_color))
+    story.append(_p(f"<b>Total audit events logged:</b> {audit_count}", "CWBody"))
+    story.append(_p(f"<b>Cryptographic Hash-Chain Integrity:</b> {'PASSED (Unbroken Chain)' if chain_ok else 'FAILED (Tampering Detected)'}", chain_color))
+    story.append(Spacer(1, 4))
+
+    # Fetch recent audit events to include real audit ledger summary table in PDF
+    audit_conn = get_conn()
+    cur = audit_conn.cursor()
+    cur.execute("SELECT timestamp, actor_role, action, target, this_hash FROM audit_events WHERE case_id=? ORDER BY timestamp ASC", (case_id,))
+    recent_events = cur.fetchall()
+    audit_conn.close()
+    if recent_events:
+        audit_rows = [[
+            _p("Timestamp (UTC)", "CWCellHeader"),
+            _p("Actor", "CWCellHeader"),
+            _p("Action", "CWCellHeader"),
+            _p("Target", "CWCellHeader"),
+            _p("Block Hash", "CWCellHeader"),
+        ]]
+        for a in recent_events:
+            audit_rows.append([
+                _p(f"<font size=7>{esc(a['timestamp'][:19].replace('T', ' '))}</font>", "CWCell"),
+                _p(f"<font size=7>{esc(a.get('actor_role') or a.get('actor') or 'system')}</font>", "CWCell"),
+                _p(f"<font size=7>{esc(a['action'][:32])}</font>", "CWCell"),
+                _p(f"<font size=7>{esc(a.get('target', '')[:24])}</font>", "CWCell"),
+                _p(f"<font size=6.5 fontName='Courier'>{esc(a['this_hash'][:14])}...</font>", "CWCell"),
+            ])
+        aud_table = Table(audit_rows, colWidths=[32 * mm, 18 * mm, 50 * mm, 42 * mm, 38 * mm], repeatRows=1)
+        aud_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d4d4d8")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREY]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(aud_table)
+    story.append(Spacer(1, 8))
 
     # --- 9. Disclosure ---
-    story.append(_p("9. Pilot Readiness Disclosure", "CWH2"))
+    story.append(_p("9. Pilot Readiness & Statutory Disclaimers", "CWH2"))
     story.append(_p(
-        "AI stages (observation extraction, discrepancy debate, scenario generation, reconstruction) ran as "
-        "live LLM calls via the Meta &rarr; Groq &rarr; Gemini fallback chain. The audit log records which "
-        "provider answered each call. <b>All AI output is investigative support, not a finding</b> &mdash; "
-        "every conflict and claim in this report must be verified against its cited source before being "
-        "relied upon. Security hardening, legal sign-off, and real-casework validation are required before "
-        "any live case use.", "CWSmall"))
+        "<b>Notice of Automated AI Extraction:</b> This case file was parsed and analyzed using CaseWeave's "
+        "multi-model pipeline (Meta, Groq, and Gemini fallback chains). Observations, timelines, and reconstructed "
+        "narratives represent investigative hypotheses derived strictly from uploaded evidentiary records. "
+        "<b>They do not constitute statutory conclusions of guilt, judicial findings, or formal police charges.</b> "
+        "Every identified discrepancy and factual claim must be independently verified against original exhibits "
+        "prior to submission before a magistrate or court of law.", "CWBody"))
+    story.append(Spacer(1, 4))
+    story.append(_p(
+        "<b>Pilot Readiness Status:</b> This document was generated in a pre-deployment pilot evaluation environment. "
+        "Chain of custody has been cryptographically preserved using SHA-256 evidence hashing and tamper-evident "
+        "block chaining. Production deployment requires formal legal sign-off under Section 63 Bharatiya Sakshya "
+        "Adhiniyam (BSA), 2023.", "CWSmall"))
+
+    doc.build(story)
+    return out_path
 
     doc.build(story)
     return out_path

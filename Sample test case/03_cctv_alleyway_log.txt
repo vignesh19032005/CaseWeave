@@ -1,0 +1,22 @@
+TAMIL NADU POLICE DEPARTMENT — G-3 KILPAUK POLICE STATION
+CCTV CAMERA FOOTAGE EXTRACTION & OBSERVATION LOG
+
+Camera ID: CAM-ALLEY-04 (High-Definition Dome Camera, IR Night Vision)
+Location: Rear Service Alleyway facing MedVantage Pharmacy Gate-B Shutter
+Recording Storage Source: Hikvision NVR Unit-2 (MAC: 44:A2:2F:98:C1:12)
+Extracted by: Head Constable R. Sathish (Cyber / Technical Cell)
+Date of Incident: Night intervening 27/28 October 2026
+
+Time-coded Footage Log:
+[02:15:00] Alleyway is quiet. Street lamp illumination operational with flickering.
+[02:28:15] Timestamp on camera overlay shows 02:28:15 hrs. A male wearing a dark rain jacket with hood pulled up and white sports shoes enters camera frame from Poonamallee Road side alley corner.
+[02:28:30] Individual approaches Gate-B rolling shutter of MedVantage Pharmacy carrying a long metallic tool in right hand.
+[02:29:05] Individual inserts tool into the bottom center lock clasp of Gate-B shutter and applies forceful upward leverage.
+[02:29:40] Rolling shutter is lifted approximately 3 feet off the ground. The individual ducks beneath the shutter and enters the interior.
+[02:35:10] Individual emerges under the shutter holding a heavy black nylon duffel bag in right hand.
+[02:35:32] Individual hastily pulls shutter down and flees on foot towards EVR Periyar Salai direction.
+[02:36:00] End of suspicious activity in alleyway frame.
+
+TECHNICAL RELEVANCE NOTE:
+The DVR system time synchronization was audited against the National Physical Laboratory (NPLI) Indian Standard Time clock. The internal clock of NVR Unit-2 was determined to be running approximately 5 to 6 minutes ahead of true standard time (Device NTP offset: +05m 32s).
+
