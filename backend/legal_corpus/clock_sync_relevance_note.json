@@ -1,0 +1,9 @@
+{
+  "id": "NOTE-CLOCKSYNC-01",
+  "title": "Practical note — clock synchronization and electronic evidence weight",
+  "jurisdiction": "India",
+  "type": "practitioner_note",
+  "source_url": null,
+  "topic": "clock synchronization, timestamp reliability, weight of electronic evidence",
+  "text": "Neither Section 63 of the BSA 2023 nor the earlier Section 65B of the Indian Evidence Act, 1872 require proof of clock synchronization as a condition of admissibility — the certificate requirement concerns the device, its regular operation, and the manner of production of the record, not the accuracy of its internal clock. However, an unsynchronized or unverified device clock goes to the WEIGHT a court gives the timestamp, not its admissibility. Where multiple sources report different times for the same event (as with a CCTV overlay, an access-control log, and witness estimates), an investigator should independently verify device clock drift wherever possible and present the discrepancy transparently, rather than treating any single timestamp as established fact. This is a practical investigative note, not a judicial holding, and should not be treated as a citable legal authority."
+}

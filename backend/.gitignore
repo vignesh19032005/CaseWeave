@@ -1,0 +1,8 @@
+.env
+caseweave.db
+__pycache__/
+*.pyc
+output_report_*.md
+certs/
+*.key
+*.log

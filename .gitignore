@@ -1,0 +1,57 @@
+# Environment & Secrets — NEVER commit
+.env
+.env*.local
+*.env
+backend/.env
+backend/certs/
+backend/token.txt
+backend/case_id.txt
+backend/job_id.txt
+backend/job.json
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Database & Runtime Stores
+backend/caseweave.db
+backend/caseweave.jsonl
+backend/chroma_store/
+backend/object_store/
+backend/models/
+backend/data/
+
+# Generated Artifacts & Reports
+backend/output_report_*
+backend/timeline_*
+
+# Logs
+*.log
+backend/*.log
+backend/download_*.log
+frontend/frontend.log
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.git/
+frontend/out/
+frontend/build/
+frontend/dist/
+frontend/*.tsbuildinfo
+*.tsbuildinfo
+
+# IDE & Tooling
+.claude/
+.idea/
+.vscode/
+*.swp
+*.swo
+

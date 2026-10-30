@@ -1,0 +1,9 @@
+{
+  "id": "IEA-1872-S65B",
+  "title": "Indian Evidence Act, 1872 — Section 65B",
+  "jurisdiction": "India",
+  "type": "statute",
+  "source_url": "https://www.indiacode.nic.in/",
+  "topic": "admissibility of electronic records (historical provision, superseded for new cases by BSA 2023 Section 63, still relevant to older judgments)",
+  "text": "Section 65B of the Indian Evidence Act, 1872 provided that any information contained in an electronic record produced by a computer, and copied onto an optical or magnetic media, shall be deemed a document admissible in evidence without further proof of the original, provided the conditions in sub-section (2) are satisfied regarding the computer's regular use, operation and output, and accompanied by a certificate under sub-section (4) identifying the record and the device, and describing its production, signed by a person in a responsible official position. The Supreme Court of India has held that this certificate is a mandatory condition precedent for admissibility of electronic evidence (Anvar P.V. v. P.K. Basheer, later clarified in Arjun Panditrao Khotkar v. Kailash Kushanrao Gorantyal)."
+}
