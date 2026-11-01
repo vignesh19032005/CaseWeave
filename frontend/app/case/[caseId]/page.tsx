@@ -630,7 +630,12 @@ function EvidenceExplorer({
             {images.map((img) => (
               <div key={img.evidence_id} className="border border-zinc-900 rounded-lg p-2.5 flex flex-col justify-between">
                 <div>
-                  <EvidenceImage caseId={caseId} evidenceId={img.evidence_id} alt={img.filename} />
+                  <EvidenceImage
+                    caseId={caseId}
+                    evidenceId={img.evidence_id}
+                    alt={img.filename}
+                    matches={segmentResults[img.evidence_id]?.matches || []}
+                  />
                   <div className="text-[11px] text-zinc-400 truncate mt-1.5 font-medium">{img.filename}</div>
                 </div>
 
@@ -639,7 +644,7 @@ function EvidenceExplorer({
                   <div className="flex gap-1.5">
                     <input
                       type="text"
-                      placeholder="e.g. chair, box, laptop"
+                      placeholder="e.g. glove, crowbar, padlock"
                       value={segmentPrompt[img.evidence_id] || ""}
                       onChange={(e) =>
                         setSegmentPrompt((prev) => ({ ...prev, [img.evidence_id]: e.target.value }))
@@ -661,13 +666,30 @@ function EvidenceExplorer({
                     <div className="text-[10px] text-red-400 mt-1">{segmentError[img.evidence_id]}</div>
                   )}
                   {segmentResults[img.evidence_id] && (
-                    <div className="mt-2 p-1.5 bg-zinc-950/80 rounded border border-zinc-800 text-[10px] text-zinc-400">
-                      <div className="text-emerald-400 font-medium">
-                        Found {segmentResults[img.evidence_id].matches?.length || 0} match(es)
-                      </div>
-                      <div className="text-[9px] text-zinc-500 truncate mt-0.5 font-mono">
-                        {segmentResults[img.evidence_id].raw_response_text || "Masks computed"}
-                      </div>
+                    <div className="mt-2 p-1.5 bg-zinc-950/90 rounded border border-zinc-800 text-[10px]">
+                      {segmentResults[img.evidence_id].matches?.length > 0 ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-emerald-400 font-medium">
+                            ✓ Found {segmentResults[img.evidence_id].matches.length} object(s)
+                          </span>
+                          <button
+                            onClick={() =>
+                              setSegmentResults((prev) => {
+                                const next = { ...prev };
+                                delete next[img.evidence_id];
+                                return next;
+                              })
+                            }
+                            className="text-[9px] text-zinc-500 hover:text-zinc-300 underline"
+                          >
+                            Clear Box
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-amber-400 text-[10px]">
+                          ⚠️ No objects recognized. Try single nouns (e.g. "glove", "crowbar", "padlock").
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -852,7 +874,17 @@ function WitnessStatementForm({ onUpload }: { onUpload: (files: FileList | null)
   );
 }
 
-function EvidenceImage({ caseId, evidenceId, alt }: { caseId: string; evidenceId: string; alt: string }) {
+function EvidenceImage({
+  caseId,
+  evidenceId,
+  alt,
+  matches = [],
+}: {
+  caseId: string;
+  evidenceId: string;
+  alt: string;
+  matches?: any[];
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -875,15 +907,50 @@ function EvidenceImage({ caseId, evidenceId, alt }: { caseId: string; evidenceId
 
   if (failed) {
     return (
-      <div className="w-full h-48 rounded mb-2 bg-zinc-900 flex items-center justify-center text-xs text-red-400">
+      <div className="w-full aspect-[4/3] rounded mb-2 bg-zinc-900 flex items-center justify-center text-xs text-red-400">
         Could not load image
       </div>
     );
   }
-  return url ? (
-    <img src={url} alt={alt} className="w-full h-48 object-cover rounded mb-2 bg-zinc-900" />
-  ) : (
-    <div className="w-full h-48 rounded mb-2 bg-zinc-900 animate-pulse" />
+
+  if (!url) {
+    return <div className="w-full aspect-[4/3] rounded mb-2 bg-zinc-900 animate-pulse" />;
+  }
+
+  return (
+    <div className="relative w-full aspect-[4/3] rounded mb-2 overflow-hidden bg-zinc-900 select-none">
+      <img src={url} alt={alt} className="w-full h-full object-cover rounded block" />
+
+      {/* SAM 3.1 Bounding Box Overlay */}
+      {matches.map((m: any, idx: number) => {
+        const box = m.box;
+        if (!box) return null;
+        const color = m.color || "#10b981";
+        return (
+          <div
+            key={idx}
+            className="absolute border-2 transition-all duration-200 pointer-events-auto"
+            style={{
+              left: `${box.pct_left}%`,
+              top: `${box.pct_top}%`,
+              width: `${box.pct_width}%`,
+              height: `${box.pct_height}%`,
+              borderColor: color,
+              backgroundColor: `${color}33`, // 20% opacity colored fill
+              boxShadow: `0 0 12px ${color}99`,
+            }}
+          >
+            <span
+              className="absolute -top-4 left-0 px-1.5 py-0.5 rounded text-[8px] font-bold text-white shadow uppercase tracking-wider whitespace-nowrap flex items-center gap-0.5"
+              style={{ backgroundColor: color }}
+            >
+              <span>🏷️</span>
+              <span>{m.label || "OBJECT"}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

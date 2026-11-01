@@ -17,17 +17,7 @@ def _mime_type(path: Path) -> str:
     return "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
 
 
-def segment_image(image_path, text_prompt: str) -> dict:
-    """
-    Runs SAM 3.1 on an image for a given noun-phrase prompt (e.g. "chair",
-    "cardboard box"). Returns every match as a box + mask.
-
-    Returns {"matches": [{"box": {...}, "mask_raw": str}], "prompt": str,
-    "image_path": str}. mask_raw is SAM 3.1's RLE-encoded pixel mask string
-    — stored as-is for now; decoding to a renderable mask overlay is a
-    Stage-11-scene-linking follow-on, not needed for the segmentation call
-    itself to be "done."
-    """
+def _segment_single(image_path, text_prompt: str) -> dict:
     api_key = get_secret("META_API_KEY")
     if not api_key:
         raise RuntimeError("META_API_KEY not set — Stage 8 needs the real Meta API key")
@@ -57,13 +47,65 @@ def segment_image(image_path, text_prompt: str) -> dict:
                 if block.get("type") == "output_text":
                     raw_text = block["text"]
 
-    # SAM 3.1 returns one or more "<box;...><mask;...>" segments per match,
-    # concatenated. Split them out rather than parsing the full geometry
-    # here — downstream scene-linking code decides what to do with each.
+    import re
+    box_pattern = re.compile(r"x1=(\d+);y1=(\d+);x2=(\d+);y2=(\d+);w=(\d+);h=(\d+)")
     matches = []
-    for segment in raw_text.split("<0f>"):
-        segment = segment.strip()
-        if segment:
-            matches.append({"raw": segment})
 
-    return {"matches": matches, "prompt": text_prompt, "image_path": str(image_path), "raw_response_text": raw_text}
+    PALETTE = ["#10b981", "#06b6d4", "#f59e0b", "#ec4899", "#8b5cf6"]
+
+    color_idx = 0
+    for match in box_pattern.finditer(raw_text):
+        x1, y1, x2, y2, w, h = map(int, match.groups())
+        pct_left = round((x1 / w) * 100, 2)
+        pct_top = round((y1 / h) * 100, 2)
+        pct_width = round(((x2 - x1) / w) * 100, 2)
+        pct_height = round(((y2 - y1) / h) * 100, 2)
+
+        matches.append({
+            "label": text_prompt,
+            "color": PALETTE[color_idx % len(PALETTE)],
+            "box": {
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "image_width": w,
+                "image_height": h,
+                "pct_left": pct_left,
+                "pct_top": pct_top,
+                "pct_width": pct_width,
+                "pct_height": pct_height,
+            },
+        })
+        color_idx += 1
+
+    return {
+        "matches": matches,
+        "prompt": text_prompt,
+        "image_path": str(image_path),
+        "detected_count": len(matches),
+    }
+
+
+def segment_image(image_path, text_prompt: str) -> dict:
+    """Runs SAM 3.1 on an image. Supports multi-noun queries separated by commas."""
+    terms = [t.strip() for t in text_prompt.split(",") if t.strip()]
+    if len(terms) > 1:
+        all_matches = []
+        PALETTE = ["#10b981", "#06b6d4", "#f59e0b", "#ec4899", "#8b5cf6"]
+        for term in terms:
+            try:
+                res = _segment_single(image_path, term)
+                for m in res.get("matches", []):
+                    m["color"] = PALETTE[len(all_matches) % len(PALETTE)]
+                    all_matches.append(m)
+            except Exception:
+                continue
+        return {
+            "matches": all_matches,
+            "prompt": text_prompt,
+            "image_path": str(image_path),
+            "detected_count": len(all_matches),
+        }
+    return _segment_single(image_path, text_prompt)
+
