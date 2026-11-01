@@ -152,7 +152,8 @@ function SmoothCameraController({
 // CONTINUOUS KINEMATICS & NAVMESH TOPOLOGICAL CORRIDOR SOLVER
 // ---------------------------------------------------------------------
 export interface ContinuousSimState {
-  simTime: number; // 0 to 420 seconds
+  simTime: number; // 0 to max seconds
+  totalSecDuration: number;
   clockStr: string;
   pos: [number, number, number];
   rotationY: number;
@@ -164,21 +165,326 @@ export interface ContinuousSimState {
   boxLootCount: number; // 0 to 3 boxes placed into duffel bag
   counterTillOpen: boolean;
   duffelBagState: "none" | "floor" | "shoulder";
-  crowbarState: "hand" | "floor";
+  crowbarState: "hand" | "floor" | "none";
   sensorStatus: string;
   phaseBadge: string;
   narrative: string;
 }
 
-function solveContinuousSimState(t: number): ContinuousSimState {
-  const clampedT = Math.max(0, Math.min(420, t));
-  const totalSec = 18 * 60 + clampedT; // Starts at 02:18:00 AM
-  const hh = "02";
-  const mm = String(Math.floor(totalSec / 60)).padStart(2, "0");
-  const ss = String(Math.floor(totalSec % 60)).padStart(2, "0");
-  const clockStr = `${hh}:${mm}:${ss} AM`;
+function solveContinuousSimState(scenario: SandboxScenario | undefined, t: number): ContinuousSimState {
+  if (!scenario) {
+    return {
+      simTime: 0,
+      totalSecDuration: 420,
+      clockStr: "02:18:00 AM",
+      pos: [-4.5, 0, -8.8],
+      rotationY: 0,
+      action: "walking",
+      isDucking: false,
+      shutterHeight: 0.0,
+      vaultToppled: false,
+      vaultDoorOpen: false,
+      boxLootCount: 0,
+      counterTillOpen: false,
+      duffelBagState: "none",
+      crowbarState: "none",
+      sensorStatus: "Idle",
+      phaseBadge: "Initialization",
+      narrative: "Awaiting simulation scenario...",
+    };
+  }
 
-  let pos: [number, number, number] = [-4.5, 0, -8.8];
+  // Calculate dynamic total duration from scenario waypoints or fall back to 420s
+  const waypoints = scenario.trajectory && scenario.trajectory.length > 0 ? scenario.trajectory : [];
+  const totalTrajectorySec = waypoints.reduce((acc, wp) => acc + (wp.dt_sec || 30), 0);
+  const totalSecDuration = Math.max(90, totalTrajectorySec > 0 ? totalTrajectorySec : 420);
+  const clampedT = Math.max(0, Math.min(totalSecDuration, t));
+
+  // Determine starting hour/minute from first frame or 02:18 AM
+  let startMinutes = 18;
+  let startHours = 2;
+  if (scenario.frames && scenario.frames.length > 0 && scenario.frames[0].timestamp) {
+    const match = scenario.frames[0].timestamp.match(/(\d+):(\d+)/);
+    if (match) {
+      startHours = parseInt(match[1], 10);
+      startMinutes = parseInt(match[2], 10);
+    }
+  }
+
+  const elapsedTotalSec = startHours * 3600 + startMinutes * 60 + clampedT;
+  const curH = String(Math.floor((elapsedTotalSec / 3600) % 24)).padStart(2, "0");
+  const curM = String(Math.floor((elapsedTotalSec % 3600) / 60)).padStart(2, "0");
+  const curS = String(Math.floor(elapsedTotalSec % 60)).padStart(2, "0");
+  const clockStr = `${curH}:${curM}:${curS} AM`;
+
+  const scenId = scenario.scenario_id.toLowerCase();
+  const scenTitle = scenario.title.toLowerCase();
+
+  // -------------------------------------------------------------------
+  // 1. SCENARIO 2: INSIDE COLLUSION / PRE-STAGED BREACH
+  // -------------------------------------------------------------------
+  if (scenId.includes("scen-auto-2") || scenTitle.includes("collusion")) {
+    let pos: [number, number, number] = [-4.5, 0, -8.0];
+    let rotationY = 0;
+    let action: ContinuousSimState["action"] = "walking";
+    let shutterHeight = 0.0;
+    let vaultDoorOpen = false;
+    let boxLootCount = 0;
+    let duffelBagState: ContinuousSimState["duffelBagState"] = "none";
+    let sensorStatus = "Perimeter Surveillance";
+    let phaseBadge = "Alley Approach (No Tools Carried)";
+    let narrative = "Accomplice approaches rear Gate-B without carrying crowbars or forced entry tools.";
+
+    if (clampedT < 30) {
+      const a = clampedT / 30;
+      pos = [-4.5, 0, -8.5 + a * 1.7];
+      rotationY = 0;
+      action = "walking";
+      shutterHeight = 0.0;
+      phaseBadge = "🚶 Unarmed Approach to Gate-B";
+      narrative = "Intruder approaches without tools, knowing the secondary latch was left disengaged.";
+    } else if (clampedT < 60) {
+      pos = [-4.5, 0, -6.8];
+      rotationY = 0;
+      action = "walking";
+      const a = (clampedT - 30) / 30;
+      shutterHeight = a * 0.65;
+      sensorStatus = "MANUAL SHUTTER LIFT (No Tamper Vibration)";
+      phaseBadge = "🚪 Manual Lift of Pre-Unlatched Shutter";
+      narrative = "Shutter is effortlessly lifted by hand without tool prying. [Contradicted by external brass shavings found at scene].";
+    } else if (clampedT < 100) {
+      const a = (clampedT - 60) / 40;
+      pos = [-4.5 + a * 7.7, 0, -6.8 + a * 4.3];
+      rotationY = Math.PI / 3;
+      action = "walking";
+      shutterHeight = 0.65;
+      sensorStatus = "Direct Vault Transit";
+      phaseBadge = "🚶 Direct Transit to Schedule H Vault";
+      narrative = "Intruder walks straight to narcotics safe without browsing or exploring store aisles.";
+    } else if (clampedT < 150) {
+      pos = [3.2, 0, -2.5];
+      rotationY = Math.PI / 2;
+      action = "looting";
+      shutterHeight = 0.65;
+      vaultDoorOpen = true;
+      boxLootCount = 3;
+      duffelBagState = "floor";
+      sensorStatus = "Vault Pickup (No Structural Cabinet Damage)";
+      phaseBadge = "💊 Targeted Narcotics Pickup";
+      narrative = "High-value Schedule H drugs are retrieved directly. Cash till and counters remain completely untouched.";
+    } else {
+      const a = (clampedT - 150) / (totalSecDuration - 150);
+      pos = [3.2 - a * 7.7, 0, -2.5 - a * 6.0];
+      rotationY = -Math.PI / 2;
+      action = "fleeing";
+      shutterHeight = 0.65;
+      vaultDoorOpen = true;
+      boxLootCount = 3;
+      duffelBagState = "shoulder";
+      sensorStatus = "Quick Egress Flight";
+      phaseBadge = "🏃 Rapid Alley Egress";
+      narrative = "Intruder slips out through Gate-B into the alleyway with narcotics satchel.";
+    }
+
+    return {
+      simTime: clampedT,
+      totalSecDuration,
+      clockStr,
+      pos,
+      rotationY,
+      action,
+      isDucking: false,
+      shutterHeight,
+      vaultToppled: false,
+      vaultDoorOpen,
+      boxLootCount,
+      counterTillOpen: false,
+      duffelBagState,
+      crowbarState: "none",
+      sensorStatus,
+      phaseBadge,
+      narrative,
+    };
+  }
+
+  // -------------------------------------------------------------------
+  // 2. SCENARIO 1 (SERIAL SYNDICATE) & OFFICER GATE-B HYPOTHESIS
+  // -------------------------------------------------------------------
+  const isSyndicateOrGateBCustom =
+    scenId.includes("scen-auto-1") ||
+    (scenId.includes("scen-custom") && (!waypoints.length || waypoints.length >= 7));
+
+  if (isSyndicateOrGateBCustom) {
+    let pos: [number, number, number] = [-4.5, 0, -8.8];
+    let rotationY = 0;
+    let action: ContinuousSimState["action"] = "walking";
+    let isDucking = false;
+    let shutterHeight = 0.0;
+    let vaultToppled = false;
+    let vaultDoorOpen = false;
+    let boxLootCount = 0;
+    let counterTillOpen = false;
+    let duffelBagState: ContinuousSimState["duffelBagState"] = "none";
+    let crowbarState: ContinuousSimState["crowbarState"] = "hand";
+    let sensorStatus = "Perimeter CCTV Active";
+    let phaseBadge = "Alleyway Infiltration Approach";
+    let narrative = "Suspect approaches stealthily along the rear alleyway strictly outside the perimeter wall.";
+
+    if (clampedT < 45) {
+      const a = clampedT / 45;
+      pos = [-4.5, 0, -8.8 + a * 1.3];
+      rotationY = 0;
+      action = "walking";
+      shutterHeight = 0.0;
+      phaseBadge = "🚶 Alleyway Approach (Outside Walls)";
+      narrative = "Suspect moves north along the rear alleyway toward Gate-B, remaining in the alley blindspot.";
+    } else if (clampedT < 90) {
+      pos = [-4.5, 0, -7.5];
+      rotationY = 0;
+      action = "prying";
+      const pryProg = Math.max(0, Math.min(1, (clampedT - 60) / 30));
+      shutterHeight = pryProg * 0.95;
+      sensorStatus = clampedT >= 70 ? "TAMPER SWITCH ALARM" : "Approaching Clasp";
+      phaseBadge = "🔧 Prying Gate-B Shutter Clasp with Crowbar";
+      narrative = "Suspect stands outside the shutter, inserts blue 18-inch crowbar into bottom clasp, applying leverage until the shutter lifts to 0.95m clearance.";
+    } else if (clampedT < 120) {
+      const a = (clampedT - 90) / 30;
+      pos = [-4.5, 0, -7.5 + a * 1.7];
+      rotationY = 0;
+      action = "crawling";
+      isDucking = true;
+      shutterHeight = 0.95;
+      sensorStatus = "BREACH CONFIRMED (Tamper RFID-01)";
+      phaseBadge = "🧎 Crawling Under 0.95m Shutter Aperture";
+      narrative = "Suspect crouches low to 0.55m height, clearing through the 0.95m opening without any wall or frame clipping.";
+    } else if (clampedT < 165) {
+      const a = (clampedT - 120) / 45;
+      shutterHeight = 0.95;
+      action = "walking";
+      if (a < 0.5) {
+        const sub = a / 0.5;
+        pos = [-4.5 + sub * 3.5, 0, -5.8 + sub * 0.3];
+        rotationY = Math.PI / 2;
+      } else {
+        const sub = (a - 0.5) / 0.5;
+        pos = [-1.0 + sub * 4.2, 0, -5.5 + sub * 3.0];
+        rotationY = Math.PI / 4;
+      }
+      sensorStatus = "Aisle Transit (Hugging PIR Deadzone)";
+      phaseBadge = "🚶 Navigating North Storage Aisle";
+      narrative = "Suspect navigates along the clear north corridor between shelves and rear wall, staying under the PIR motion detector cone.";
+    } else if (clampedT < 270) {
+      pos = [3.2, 0, -2.5];
+      rotationY = Math.PI / 2;
+      action = "looting";
+      shutterHeight = 0.95;
+      vaultToppled = clampedT >= 185;
+      vaultDoorOpen = clampedT >= 195;
+      duffelBagState = "floor";
+      if (clampedT >= 200 && clampedT < 225) boxLootCount = 1;
+      else if (clampedT >= 225 && clampedT < 250) boxLootCount = 2;
+      else if (clampedT >= 250) boxLootCount = 3;
+
+      sensorStatus = "VAULT DOOR SENSOR TRIGGERED";
+      phaseBadge = "🎒 Looting Narcotics Safe & Packing Duffel Bag";
+      narrative = "Safe dial is forced; upper glass cabinet topples. Suspect unzips black duffel bag on the floor and packs 120 units of controlled narcotics cartons.";
+    } else if (clampedT < 315) {
+      const a = (clampedT - 270) / 45;
+      shutterHeight = 0.95;
+      vaultToppled = true;
+      vaultDoorOpen = true;
+      boxLootCount = 3;
+      duffelBagState = "shoulder";
+      action = "carrying_walking";
+      if (a < 0.5) {
+        const sub = a / 0.5;
+        pos = [3.2 - sub * 2.6, 0, -2.5 + sub * 3.0];
+        rotationY = Math.PI;
+      } else {
+        const sub = (a - 0.5) / 0.5;
+        pos = [0.6 + sub * 1.4, 0, 0.5 + sub * 2.7];
+        rotationY = 0;
+      }
+      sensorStatus = "Showroom Floor Motion Active";
+      phaseBadge = "🚶 Carrying Loaded Duffel Bag to Billing Desk";
+      narrative = "Suspect slings the loaded duffel bag over left shoulder and walks down the central aisle toward the retail counter.";
+    } else if (clampedT < 360) {
+      pos = [2.0, 0, 3.2];
+      rotationY = Math.PI / 2;
+      action = "prying_till";
+      shutterHeight = 0.95;
+      vaultToppled = true;
+      vaultDoorOpen = true;
+      boxLootCount = 3;
+      duffelBagState = "shoulder";
+      counterTillOpen = clampedT >= 330;
+      crowbarState = clampedT >= 345 ? "floor" : "hand";
+      sensorStatus = "TILL REED SWITCH TAMPER";
+      phaseBadge = "💵 Prying Cash Till Drawer & Stealing Float";
+      narrative = "Suspect jimmies the register till; cash float of INR 45,000 is grabbed. Crowbar slips and drops onto concrete floor beside till with blue nitrile glove.";
+    } else {
+      const a = (clampedT - 360) / (totalSecDuration - 360 || 60);
+      shutterHeight = 0.95;
+      vaultToppled = true;
+      vaultDoorOpen = true;
+      boxLootCount = 3;
+      counterTillOpen = true;
+      duffelBagState = "shoulder";
+      crowbarState = "floor";
+
+      if (a < 0.35) {
+        const sub = a / 0.35;
+        pos = [2.0 - sub * 1.4, 0, 3.2 - sub * 8.7];
+        rotationY = -Math.PI;
+        action = "carrying_walking";
+      } else if (a < 0.65) {
+        const sub = (a - 0.35) / 0.3;
+        pos = [0.6 - sub * 5.1, 0, -5.5 - sub * 0.3];
+        rotationY = -Math.PI / 2;
+        action = "carrying_walking";
+      } else if (a < 0.82) {
+        const sub = (a - 0.65) / 0.17;
+        pos = [-4.5, 0, -5.8 - sub * 1.7];
+        rotationY = -Math.PI;
+        action = "crawling";
+        isDucking = true;
+      } else {
+        const sub = (a - 0.82) / 0.18;
+        pos = [-4.5, 0, -7.5 - sub * 1.7];
+        rotationY = -Math.PI;
+        action = "fleeing";
+      }
+      sensorStatus = "EGRESS COMPLETED";
+      phaseBadge = "🏃 Corridors Egress & Alleyway Flight";
+      narrative = "Suspect ducks back under the Gate-B shutter opening into the alley with the duffel bag, fleeing north toward EVR Salai.";
+    }
+
+    return {
+      simTime: clampedT,
+      totalSecDuration,
+      clockStr,
+      pos,
+      rotationY,
+      action,
+      isDucking,
+      shutterHeight,
+      vaultToppled,
+      vaultDoorOpen,
+      boxLootCount,
+      counterTillOpen,
+      duffelBagState,
+      crowbarState,
+      sensorStatus,
+      phaseBadge,
+      narrative,
+    };
+  }
+
+  // -------------------------------------------------------------------
+  // 3. UNIVERSAL CORRIDOR TRAJECTORY & KEYFRAME INTERPOLATOR
+  // (Handles ANY Scenario, ANY Officer Custom Hypothesis, and ALL Cases)
+  // -------------------------------------------------------------------
+  let pos: [number, number, number] = waypoints[0]?.pos || [-4.5, 0, -8.0];
   let rotationY = 0;
   let action: ContinuousSimState["action"] = "walking";
   let isDucking = false;
@@ -188,150 +494,88 @@ function solveContinuousSimState(t: number): ContinuousSimState {
   let boxLootCount = 0;
   let counterTillOpen = false;
   let duffelBagState: ContinuousSimState["duffelBagState"] = "none";
-  let crowbarState: ContinuousSimState["crowbarState"] = "hand";
-  let sensorStatus = "Perimeter CCTV Active";
-  let phaseBadge = "Alleyway Infiltration Approach";
-  let narrative = "Suspect approaches stealthily along the rear alleyway strictly outside the perimeter wall.";
+  let crowbarState: ContinuousSimState["crowbarState"] = "none";
+  let sensorStatus = "Perimeter Surveillance";
+  let phaseBadge = scenario.title || "Custom Simulation";
+  let narrative = scenario.hypothesis_summary || "Simulating custom crime scene trajectory...";
 
-  if (clampedT < 45) {
-    // 1. Alley Approach: [-4.5, 0, -8.8] to [-4.5, 0, -7.5]
-    const a = clampedT / 45;
-    pos = [-4.5, 0, -8.8 + a * 1.3];
-    rotationY = 0;
-    action = "walking";
-    shutterHeight = 0.0;
-    phaseBadge = "🚶 Alleyway Approach (Outside Walls)";
-    narrative = "Suspect moves north along the rear alleyway toward Gate-B, remaining in the alley blindspot.";
-  } else if (clampedT < 90) {
-    // 2. Shutter Prying at [-4.5, 0, -7.5] (outside wall)
-    pos = [-4.5, 0, -7.5];
-    rotationY = 0;
-    action = "prying";
-    const pryProg = Math.max(0, Math.min(1, (clampedT - 60) / 30));
-    shutterHeight = pryProg * 0.95;
-    sensorStatus = clampedT >= 70 ? "TAMPER SWITCH ALARM" : "Approaching Clasp";
-    phaseBadge = "🔧 Prying Gate-B Shutter Clasp with Crowbar";
-    narrative = "Suspect stands outside the shutter, inserts blue 18-inch crowbar into bottom clasp, applying leverage until the shutter lifts to 0.95m clearance.";
-  } else if (clampedT < 120) {
-    // 3. Aperture Clearance Entry: [-4.5, 0, -7.5] -> [-4.5, 0, -5.8]
-    const a = (clampedT - 90) / 30;
-    pos = [-4.5, 0, -7.5 + a * 1.7];
-    rotationY = 0;
-    action = "crawling";
-    isDucking = true;
-    shutterHeight = 0.95;
-    sensorStatus = "BREACH CONFIRMED (Tamper RFID-01)";
-    phaseBadge = "🧎 Crawling Under 0.95m Shutter Aperture";
-    narrative = "Suspect crouches low to 0.55m height, clearing through the 0.95m opening without any wall or frame clipping.";
-  } else if (clampedT < 165) {
-    // 4. North Aisle Transit: [-4.5, 0, -5.8] -> [-1.0, 0, -5.5] -> [3.2, 0, -2.5]
-    const a = (clampedT - 120) / 45;
-    shutterHeight = 0.95;
-    action = "walking";
-    if (a < 0.5) {
-      const sub = a / 0.5;
-      pos = [-4.5 + sub * 3.5, 0, -5.8 + sub * 0.3];
-      rotationY = Math.PI / 2;
-    } else {
-      const sub = (a - 0.5) / 0.5;
-      pos = [-1.0 + sub * 4.2, 0, -5.5 + sub * 3.0];
-      rotationY = Math.PI / 4;
+  // 1. Waypoint Segment Interpolation
+  if (waypoints.length >= 2) {
+    let accumTime = 0;
+    let segIdx = 0;
+    for (let i = 0; i < waypoints.length; i++) {
+      const dur = waypoints[i].dt_sec || 30;
+      if (clampedT >= accumTime && (clampedT < accumTime + dur || i === waypoints.length - 1)) {
+        segIdx = i;
+        const progress = Math.min(1, Math.max(0, (clampedT - accumTime) / dur));
+        const pA = waypoints[segIdx].pos;
+        const pB = (waypoints[segIdx + 1] || waypoints[segIdx]).pos;
+        pos = [
+          pA[0] + progress * (pB[0] - pA[0]),
+          pA[1] + progress * (pB[1] - pA[1]),
+          pA[2] + progress * (pB[2] - pA[2]),
+        ];
+        const dx = pB[0] - pA[0];
+        const dz = pB[2] - pA[2];
+        if (Math.hypot(dx, dz) > 0.05) {
+          rotationY = Math.atan2(dx, dz);
+        }
+        break;
+      }
+      accumTime += dur;
     }
-    sensorStatus = "Aisle Transit (Hugging PIR Deadzone)";
-    phaseBadge = "🚶 Navigating North Storage Aisle";
-    narrative = "Suspect navigates along the clear north corridor between shelves and rear wall, staying under the PIR motion detector cone.";
-  } else if (clampedT < 270) {
-    // 5. Narcotics Vault Breach & Bag Packing: At [3.2, 0, -2.5]
-    pos = [3.2, 0, -2.5];
-    rotationY = Math.PI / 2;
-    action = "looting";
-    shutterHeight = 0.95;
-    vaultToppled = clampedT >= 185;
-    vaultDoorOpen = clampedT >= 195;
-    duffelBagState = "floor";
-    if (clampedT >= 200 && clampedT < 225) boxLootCount = 1;
-    else if (clampedT >= 225 && clampedT < 250) boxLootCount = 2;
-    else if (clampedT >= 250) boxLootCount = 3;
 
-    sensorStatus = "VAULT DOOR SENSOR TRIGGERED";
-    phaseBadge = "🎒 Looting Narcotics Safe & Packing Duffel Bag";
-    narrative = "Safe dial is forced; upper glass cabinet topples. Suspect unzips black duffel bag on the floor and packs 120 units of controlled narcotics cartons.";
-  } else if (clampedT < 315) {
-    // 6. Showroom Transit to Billing Desk: [3.2, 0, -2.5] -> [0.6, 0, 0.5] -> [2.0, 0, 3.2]
-    const a = (clampedT - 270) / 45;
-    shutterHeight = 0.95;
-    vaultToppled = true;
-    vaultDoorOpen = true;
-    boxLootCount = 3;
-    duffelBagState = "shoulder";
-    action = "carrying_walking";
-    if (a < 0.5) {
-      const sub = a / 0.5;
-      pos = [3.2 - sub * 2.6, 0, -2.5 + sub * 3.0];
-      rotationY = Math.PI;
-    } else {
-      const sub = (a - 0.5) / 0.5;
-      pos = [0.6 + sub * 1.4, 0, 0.5 + sub * 2.7];
-      rotationY = 0;
-    }
-    sensorStatus = "Showroom Floor Motion Active";
-    phaseBadge = "🚶 Carrying Loaded Duffel Bag to Billing Desk";
-    narrative = "Suspect slings the loaded duffel bag over left shoulder and walks down the central aisle toward the retail counter.";
-  } else if (clampedT < 360) {
-    // 7. Cash Till Drawer Pried: At [2.0, 0, 3.2]
-    pos = [2.0, 0, 3.2];
-    rotationY = Math.PI / 2;
-    action = "prying_till";
-    shutterHeight = 0.95;
-    vaultToppled = true;
-    vaultDoorOpen = true;
-    boxLootCount = 3;
-    duffelBagState = "shoulder";
-    counterTillOpen = clampedT >= 330;
-    crowbarState = clampedT >= 345 ? "floor" : "hand";
-    sensorStatus = "TILL REED SWITCH TAMPER";
-    phaseBadge = "💵 Prying Cash Till Drawer & Stealing Float";
-    narrative = "Suspect jimmies the register till; cash float of INR 45,000 is grabbed. Crowbar slips and drops onto concrete floor beside till with blue nitrile glove.";
-  } else {
-    // 8. Egress via Corridors: [2.0, 0, 3.2] -> [0.6, 0, -5.5] -> [-4.5, 0, -5.8] -> crawl [-4.5, 0, -7.5] -> flee [-4.5, 0, -9.2]
-    const a = (clampedT - 360) / 60;
-    shutterHeight = 0.95;
-    vaultToppled = true;
-    vaultDoorOpen = true;
-    boxLootCount = 3;
-    counterTillOpen = true;
-    duffelBagState = "shoulder";
-    crowbarState = "floor";
-
-    if (a < 0.35) {
-      const sub = a / 0.35;
-      pos = [2.0 - sub * 1.4, 0, 3.2 - sub * 8.7];
-      rotationY = -Math.PI;
-      action = "carrying_walking";
-    } else if (a < 0.65) {
-      const sub = (a - 0.35) / 0.3;
-      pos = [0.6 - sub * 5.1, 0, -5.5 - sub * 0.3];
-      rotationY = -Math.PI / 2;
-      action = "carrying_walking";
-    } else if (a < 0.82) {
-      const sub = (a - 0.65) / 0.17;
-      pos = [-4.5, 0, -5.8 - sub * 1.7];
-      rotationY = -Math.PI;
+    const curWpLabel = (waypoints[segIdx]?.label || "").toLowerCase();
+    if (curWpLabel.includes("pry") || curWpLabel.includes("clasp") || curWpLabel.includes("shutter")) {
+      action = "prying";
+      crowbarState = "hand";
+      shutterHeight = 0.95;
+    } else if (curWpLabel.includes("crawl") || curWpLabel.includes("aperture")) {
       action = "crawling";
       isDucking = true;
-    } else {
-      const sub = (a - 0.82) / 0.18;
-      pos = [-4.5, 0, -7.5 - sub * 1.7];
-      rotationY = -Math.PI;
+      shutterHeight = 0.95;
+    } else if (curWpLabel.includes("vault") || curWpLabel.includes("safe") || curWpLabel.includes("loot")) {
+      action = "looting";
+      vaultDoorOpen = true;
+      duffelBagState = "floor";
+      boxLootCount = clampedT % 2 === 0 ? 2 : 3;
+    } else if (curWpLabel.includes("till") || curWpLabel.includes("cash") || curWpLabel.includes("counter")) {
+      action = "prying_till";
+      counterTillOpen = true;
+      crowbarState = "floor";
+      duffelBagState = "shoulder";
+    } else if (curWpLabel.includes("flee") || curWpLabel.includes("egress") || curWpLabel.includes("escape")) {
       action = "fleeing";
+      duffelBagState = "shoulder";
+      shutterHeight = 0.95;
+    } else if (segIdx > 2 && duffelBagState !== "none") {
+      action = "carrying_walking";
+      duffelBagState = "shoulder";
     }
-    sensorStatus = "EGRESS COMPLETED (02:25 AM)";
-    phaseBadge = "🏃 Corridors Egress & Alleyway Flight";
-    narrative = "Suspect ducks back under the Gate-B shutter opening into the alley with the duffel bag, fleeing north toward EVR Salai.";
+  }
+
+  // 2. Map State from Closest Scenario Keyframe
+  if (scenario.frames && scenario.frames.length > 0) {
+    const frameIdx = Math.min(
+      scenario.frames.length - 1,
+      Math.floor((clampedT / totalSecDuration) * scenario.frames.length)
+    );
+    const frame = scenario.frames[frameIdx];
+    if (frame) {
+      phaseBadge = frame.title || frame.phase;
+      narrative = frame.narrative;
+      if (frame.scene_state) {
+        if (frame.scene_state.shutter_height !== undefined) shutterHeight = frame.scene_state.shutter_height;
+        if (frame.scene_state.vault_toppled !== undefined) vaultToppled = frame.scene_state.vault_toppled;
+        if (frame.scene_state.counter_open !== undefined) counterTillOpen = frame.scene_state.counter_open;
+        if (frame.scene_state.sensor_status) sensorStatus = frame.scene_state.sensor_status;
+      }
+    }
   }
 
   return {
     simTime: clampedT,
+    totalSecDuration,
     clockStr,
     pos,
     rotationY,
@@ -350,9 +594,6 @@ function solveContinuousSimState(t: number): ContinuousSimState {
   };
 }
 
-// ---------------------------------------------------------------------
-// ARTICULATED KINEMATIC CHARACTER MESH
-// ---------------------------------------------------------------------
 function KinematicSuspectAvatar({
   simState,
   onObjectClick,
@@ -942,9 +1183,19 @@ export default function ForensicSandboxPlayer({
   const [synthesizing, setSynthesizing] = useState(false);
 
   // Continuous Simulation State Solver
+  const currentScenario = scenarios[activeScenarioIdx] || scenarios[0];
+  const totalScenarioSec = useMemo(() => {
+    if (currentScenario?.trajectory?.length) {
+      const total = currentScenario.trajectory.reduce((acc, wp) => acc + (wp.dt_sec || 30), 0);
+      return Math.max(90, total);
+    }
+    return 420;
+  }, [currentScenario]);
+
+  // Continuous Simulation State Solver (Universal for all scenarios & cases)
   const simState = useMemo(() => {
-    return solveContinuousSimState(simTime);
-  }, [simTime]);
+    return solveContinuousSimState(currentScenario, simTime);
+  }, [currentScenario, simTime]);
 
   // Real-time playback loop (updates every 50ms)
   useEffect(() => {
@@ -952,7 +1203,7 @@ export default function ForensicSandboxPlayer({
     const intervalMs = 50;
     const timer = setInterval(() => {
       setSimTime((prev) => {
-        if (prev >= 420) {
+        if (prev >= totalScenarioSec) {
           setIsPlaying(false);
           return 420;
         }
@@ -960,11 +1211,9 @@ export default function ForensicSandboxPlayer({
       });
     }, intervalMs);
     return () => clearInterval(timer);
-  }, [isPlaying, playbackSpeed]);
+  }, [isPlaying, playbackSpeed, totalScenarioSec]);
 
-  const currentScenario = scenarios[activeScenarioIdx] || scenarios[0];
-
-  const handleSelectScenario = (idx: number) => {
+    const handleSelectScenario = (idx: number) => {
     setActiveScenarioIdx(idx);
     setSimTime(0);
     setIsPlaying(false);
@@ -1057,7 +1306,7 @@ export default function ForensicSandboxPlayer({
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-emerald-400 text-xs font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>{simState.clockStr}</span>
-            <span className="text-[10px] text-zinc-500 ml-1">({Math.floor(simTime / 60)}m {Math.floor(simTime % 60)}s / 7m)</span>
+            <span className="text-[10px] text-zinc-500 ml-1">({Math.floor(simTime / 60)}m {Math.floor(simTime % 60)}s / {Math.floor(totalScenarioSec / 60)}m {Math.floor(totalScenarioSec % 60)}s)</span>
           </div>
           <span className="text-xs text-zinc-200 font-semibold truncate max-w-md">
             {simState.phaseBadge}
@@ -1095,7 +1344,7 @@ export default function ForensicSandboxPlayer({
           </button>
           <button
             onClick={() => {
-              setSimTime((p) => Math.min(420, p + 15));
+              setSimTime((p) => Math.min(totalScenarioSec, p + 15));
             }}
             className="p-1.5 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold"
             title="Step Forward +15s"
@@ -1147,7 +1396,7 @@ export default function ForensicSandboxPlayer({
           <input
             type="range"
             min={0}
-            max={420}
+            max={totalScenarioSec}
             step={1}
             value={Math.round(simTime)}
             onChange={(e) => {

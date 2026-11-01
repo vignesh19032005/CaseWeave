@@ -381,38 +381,36 @@ def synthesize_custom_scenario(case_id: str, hypothesis_text: str, answers: Dict
 
     if is_rooftop:
         custom_waypoints = [
-            {"pos": [-2.0, 3.8, -2.0], "label": "Rooftop Hatch Infiltration", "dt_sec": 120},
-            {"pos": [-2.0, 0.0, -2.0], "label": "Drop to Storage Floor", "dt_sec": 20},
-            {"pos": [3.6, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 180},
-            {"pos": [-4.5, 0.0, -6.0], "label": "Shutter Pried from Inside for Egress", "dt_sec": 120},
+            {"pos": [-2.0, 3.5, -2.0], "label": "Rooftop Hatch Infiltration", "dt_sec": 60},
+            {"pos": [-2.0, 0.0, -2.0], "label": "Vertical Drop into Storage Bay", "dt_sec": 20},
+            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 150},
+            {"pos": [0.6, 0.0, -5.5], "label": "Corridor Transit to Rear", "dt_sec": 30},
+            {"pos": [-4.5, 0.0, -6.8], "label": "Shutter Internal Release", "dt_sec": 30},
+            {"pos": [-4.5, 0.0, -8.8], "label": "Alleyway Egress Flight", "dt_sec": 45},
         ]
     elif is_front:
         custom_waypoints = [
-            {"pos": [-1.0, 0.0, 6.5], "label": "Front Glass Door Approach", "dt_sec": 60},
-            {"pos": [2.2, 0.0, 3.4], "label": "Front Billing Counter Breach", "dt_sec": 180},
-            {"pos": [3.6, 0.0, -2.5], "label": "Narcotics Vault Infiltration", "dt_sec": 120},
-            {"pos": [-4.5, 0.0, -6.0], "label": "Alleyway Exit", "dt_sec": 60},
+            {"pos": [-1.0, 0.0, 8.5], "label": "Front Street Approach", "dt_sec": 45},
+            {"pos": [-1.0, 0.0, 6.8], "label": "Front Glass Entrance Breach", "dt_sec": 30},
+            {"pos": [0.0, 0.0, 5.0], "label": "Retail Showroom Entry", "dt_sec": 15},
+            {"pos": [2.0, 0.0, 3.2], "label": "Billing Desk Till Pried", "dt_sec": 90},
+            {"pos": [0.6, 0.0, 0.5], "label": "Central Showroom Transit", "dt_sec": 30},
+            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Looted", "dt_sec": 120},
+            {"pos": [0.0, 0.0, 5.0], "label": "Return Corridor Transit", "dt_sec": 30},
+            {"pos": [-1.0, 0.0, 8.5], "label": "Front Street Egress Flight", "dt_sec": 45},
         ]
     else:
+        # Strictly route all custom waypoints through physical clearance corridors (no wall clipping)
         custom_waypoints = [
-            {"pos": [-6.5, 0.0, -3.0], "label": "Perimeter Wall Scaled", "dt_sec": 90},
-            {"pos": [-4.5, 0.0, -6.0], "label": "Rear Shutter Breached", "dt_sec": 60},
-            {"pos": [3.6, 0.0, -2.5], "label": "Narcotics Vault Looted", "dt_sec": 150},
-            {"pos": [2.2, 0.0, 3.4], "label": "Cash Counter Pried", "dt_sec": 120},
-            {"pos": [-4.5, 0.0, -8.0], "label": "Egress via Courtyard", "dt_sec": 60},
+            {"pos": [-4.5, 0.0, -8.5], "label": "Perimeter Exterior Approach", "dt_sec": 60},
+            {"pos": [-4.5, 0.0, -7.5], "label": "Gate-B Shutter Clasp Forced (Exterior)", "dt_sec": 45},
+            {"pos": [-4.5, 0.0, -6.8], "label": "Aperture Clearance Portal Entry", "dt_sec": 15},
+            {"pos": [-1.0, 0.0, -5.5], "label": "North Aisle Corridor Transit", "dt_sec": 30},
+            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 150},
+            {"pos": [2.0, 0.0, 3.2], "label": "Billing Till Drawer Pried", "dt_sec": 90},
+            {"pos": [-4.5, 0.0, -6.8], "label": "Doorway Portal Egress", "dt_sec": 20},
+            {"pos": [-4.5, 0.0, -8.8], "label": "Alleyway Escape Route", "dt_sec": 45},
         ]
-
-    # Strictly route all custom waypoints through physical clearance corridors (no wall clipping)
-    custom_waypoints = [
-        {"pos": [-4.5, 0.0, -8.5], "label": "Perimeter Exterior Approach", "dt_sec": 60},
-        {"pos": [-4.5, 0.0, -7.5], "label": "Gate-B Shutter Clasp Forced (Exterior)", "dt_sec": 45},
-        {"pos": [-4.5, 0.0, -6.8], "label": "Aperture Clearance Portal Entry", "dt_sec": 15},
-        {"pos": [-1.0, 0.0, -5.5], "label": "North Aisle Corridor Transit", "dt_sec": 30},
-        {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 150},
-        {"pos": [2.0, 0.0, 3.2], "label": "Billing Till Drawer Pried", "dt_sec": 90},
-        {"pos": [-4.5, 0.0, -6.8], "label": "Doorway Portal Egress", "dt_sec": 20},
-        {"pos": [-4.5, 0.0, -8.8], "label": "Alleyway Escape Route", "dt_sec": 45},
-    ]
 
     physics = calculate_physics_validation([], custom_waypoints)
 
