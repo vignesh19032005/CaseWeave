@@ -371,115 +371,211 @@ def generate_socratic_interview(case_id: str, hypothesis_text: str) -> List[Dict
 def synthesize_custom_scenario(case_id: str, hypothesis_text: str, answers: Dict[str, str]) -> Dict[str, Any]:
     """
     Synthesizes the officer's custom scenario into a full 3D simulation with
-    physics validation and custom keyframes.
+    distinct kinematics, physical validation, and custom keyframes.
     """
     scenario_id = f"SCEN-CUSTOM-{uuid.uuid4().hex[:8]}"
 
-    # Procedural Waypoints based on officer hypothesis keywords
-    is_rooftop = "roof" in hypothesis_text.lower() or "duct" in hypothesis_text.lower()
-    is_front = "front" in hypothesis_text.lower() or "counter" in hypothesis_text.lower()
+    # Keyword analysis
+    text_lower = hypothesis_text.lower()
+    is_rooftop = any(k in text_lower for k in ["roof", "duct", "vent", "ceiling", "hatch"])
+    is_front = any(k in text_lower for k in ["front", "door", "glass", "street", "main", "showroom"])
+    is_accomplice = any(k in text_lower for k in ["accomplice", "collusion", "staff", "key", "inside", "unlatched", "employee"])
 
-    if is_rooftop:
-        custom_waypoints = [
-            {"pos": [-2.0, 3.5, -2.0], "label": "Rooftop Hatch Infiltration", "dt_sec": 60},
-            {"pos": [-2.0, 0.0, -2.0], "label": "Vertical Drop into Storage Bay", "dt_sec": 20},
-            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 150},
-            {"pos": [0.6, 0.0, -5.5], "label": "Corridor Transit to Rear", "dt_sec": 30},
-            {"pos": [-4.5, 0.0, -6.8], "label": "Shutter Internal Release", "dt_sec": 30},
-            {"pos": [-4.5, 0.0, -8.8], "label": "Alleyway Egress Flight", "dt_sec": 45},
-        ]
-    elif is_front:
+    if is_front:
         custom_waypoints = [
             {"pos": [-1.0, 0.0, 8.5], "label": "Front Street Approach", "dt_sec": 45},
-            {"pos": [-1.0, 0.0, 6.8], "label": "Front Glass Entrance Breach", "dt_sec": 30},
+            {"pos": [-0.5, 0.0, 7.0], "label": "Front Double Glass Door Threshold", "dt_sec": 30},
             {"pos": [0.0, 0.0, 5.0], "label": "Retail Showroom Entry", "dt_sec": 15},
-            {"pos": [2.0, 0.0, 3.2], "label": "Billing Desk Till Pried", "dt_sec": 90},
+            {"pos": [2.0, 0.0, 3.2], "label": "Billing Desk Till Drawer Pried", "dt_sec": 90},
             {"pos": [0.6, 0.0, 0.5], "label": "Central Showroom Transit", "dt_sec": 30},
-            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Looted", "dt_sec": 120},
+            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Safe Looted", "dt_sec": 120},
             {"pos": [0.0, 0.0, 5.0], "label": "Return Corridor Transit", "dt_sec": 30},
             {"pos": [-1.0, 0.0, 8.5], "label": "Front Street Egress Flight", "dt_sec": 45},
         ]
-    else:
-        # Strictly route all custom waypoints through physical clearance corridors (no wall clipping)
+        custom_frames = [
+            {
+                "frame_idx": 0, "timestamp": "02:18 AM", "phase": "FRONT APPROACH",
+                "title": "Front Street Infiltration",
+                "narrative": f"Suspect approaches via EVR Periyar Salai frontage: {hypothesis_text}. Rear Gate-B remains completely untouched.",
+                "actor": {"visible": True, "pos": [-1.0, 0.0, 8.5], "action": "walking"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": False, "sensor_status": "Street Surveillance Active"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 1, "timestamp": "02:20 AM", "phase": "FRONT DOOR BREACH",
+                "title": "Commercial Glass Entrance Forced",
+                "narrative": "Suspect forces front double glass entrance doors. Gate-B rolling shutter remains down.",
+                "actor": {"visible": True, "pos": [-0.5, 0.0, 7.0], "action": "prying"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": False, "sensor_status": "FRONT GLASS CONTACT TRIP"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 2, "timestamp": "02:22 AM", "phase": "CASH THEFT",
+                "title": "Billing Counter Till Pried",
+                "narrative": "Intruder jimmies the retail register, stealing cash float before proceeding to vault.",
+                "actor": {"visible": True, "pos": [2.0, 0.0, 3.2], "action": "prying_drawer"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": True, "sensor_status": "TILL REED TAMPER"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 3, "timestamp": "02:25 AM", "phase": "VAULT INVASION",
+                "title": "Narcotics Vault Safe Looted",
+                "narrative": "Intruder navigates along showroom to rear safe, loading Schedule H drugs into bag.",
+                "actor": {"visible": True, "pos": [3.2, 0.0, -2.5], "action": "looting_vault"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": True, "counter_open": True, "sensor_status": "PIR-STOCK-02 ACTIVE"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 4, "timestamp": "02:28 AM", "phase": "FRONT EGRESS",
+                "title": "Front Street Egress to EVR Salai",
+                "narrative": "Intruder flees back through front glass entrance doors onto the main road.",
+                "actor": {"visible": True, "pos": [-1.0, 0.0, 8.5], "action": "fleeing"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": True, "counter_open": True, "sensor_status": "Front Sensor Restored"},
+                "camera_preset": "overview",
+            },
+        ]
+    elif is_accomplice:
         custom_waypoints = [
-            {"pos": [-4.5, 0.0, -8.5], "label": "Perimeter Exterior Approach", "dt_sec": 60},
-            {"pos": [-4.5, 0.0, -7.5], "label": "Gate-B Shutter Clasp Forced (Exterior)", "dt_sec": 45},
-            {"pos": [-4.5, 0.0, -6.8], "label": "Aperture Clearance Portal Entry", "dt_sec": 15},
-            {"pos": [-1.0, 0.0, -5.5], "label": "North Aisle Corridor Transit", "dt_sec": 30},
-            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 150},
+            {"pos": [-4.5, 0.0, -8.5], "label": "Perimeter Alley Approach", "dt_sec": 30},
+            {"pos": [-4.5, 0.0, -6.8], "label": "Pre-Unlatched Gate-B Entry", "dt_sec": 20},
+            {"pos": [-1.0, 0.0, -5.5], "label": "Aisle Transit with Inside Knowledge", "dt_sec": 25},
+            {"pos": [3.2, 0.0, -2.5], "label": "Targeted Narcotics Safe Pickup", "dt_sec": 90},
+            {"pos": [-1.0, 0.0, -5.5], "label": "Return Corridor Transit", "dt_sec": 25},
+            {"pos": [-4.5, 0.0, -8.8], "label": "Discreet Alley Egress", "dt_sec": 30},
+        ]
+        custom_frames = [
+            {
+                "frame_idx": 0, "timestamp": "02:20 AM", "phase": "UNARMED INGRESS",
+                "title": "Accomplice Entry (No Tools Carried)",
+                "narrative": f"Hypothesis: {hypothesis_text}. Intruder enters cleanly without crowbar or forced prying tools.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -8.5], "action": "walking"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": False, "sensor_status": "Perimeter Surveillance"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 1, "timestamp": "02:21 AM", "phase": "UNLATCHED LIFT",
+                "title": "Shutter Lifted by Hand",
+                "narrative": "Pre-loosened shutter slides up without mechanical prying. Cash till is ignored.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -6.8], "action": "walking"},
+                "scene_state": {"shutter_height": 0.65, "vault_toppled": False, "counter_open": False, "sensor_status": "Manual Slide Logged"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 2, "timestamp": "02:23 AM", "phase": "DRUG RETRIEVAL",
+                "title": "Direct Vault Safe Retrieval",
+                "narrative": "Intruder heads straight to vault; takes specific high-value pharmaceuticals.",
+                "actor": {"visible": True, "pos": [3.2, 0.0, -2.5], "action": "looting_vault"},
+                "scene_state": {"shutter_height": 0.65, "vault_toppled": False, "counter_open": False, "sensor_status": "Safe Accessed"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 3, "timestamp": "02:25 AM", "phase": "DISCREET EXIT",
+                "title": "Discreet Alley Egress (Till Untouched)",
+                "narrative": "Intruder exits silently through Gate-B. Cash register remains undisturbed.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -8.8], "action": "fleeing"},
+                "scene_state": {"shutter_height": 0.65, "vault_toppled": False, "counter_open": False, "sensor_status": "Egress Complete"},
+                "camera_preset": "overview",
+            },
+        ]
+    elif is_rooftop:
+        custom_waypoints = [
+            {"pos": [-2.0, 3.2, -2.0], "label": "Rooftop Ventilation Infiltration", "dt_sec": 45},
+            {"pos": [-2.0, 0.0, -2.0], "label": "Vertical Drop into Storage Bay", "dt_sec": 15},
+            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 120},
+            {"pos": [0.6, 0.0, -5.5], "label": "Corridor Transit to Rear", "dt_sec": 25},
+            {"pos": [-4.5, 0.0, -6.8], "label": "Shutter Internal Release", "dt_sec": 30},
+            {"pos": [-4.5, 0.0, -8.8], "label": "Alley Egress Flight", "dt_sec": 45},
+        ]
+        custom_frames = [
+            {
+                "frame_idx": 0, "timestamp": "02:18 AM", "phase": "ROOFTOP DROP",
+                "title": "Rooftop Ventilation Shaft Entry",
+                "narrative": f"Intruder accesses roof hatch and drops down into stockroom: {hypothesis_text}",
+                "actor": {"visible": True, "pos": [-2.0, 3.2, -2.0], "action": "walking"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": False, "sensor_status": "Roof Vibration Logged"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 1, "timestamp": "02:22 AM", "phase": "VAULT ACCESS",
+                "title": "Narcotics Safe Looted",
+                "narrative": "Intruder loots narcotics safe from within the facility.",
+                "actor": {"visible": True, "pos": [3.2, 0.0, -2.5], "action": "looting_vault"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": True, "counter_open": False, "sensor_status": "PIR-STOCK-02 Active"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 2, "timestamp": "02:26 AM", "phase": "REAR EGRESS",
+                "title": "Shutter Pried from Inside for Escape",
+                "narrative": "Suspect unlatches rear Gate-B from inside to escape into the alley.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -8.8], "action": "fleeing"},
+                "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": False, "sensor_status": "Egress Complete"},
+                "camera_preset": "overview",
+            },
+        ]
+    else:
+        # Default Gate-B corridor route
+        custom_waypoints = [
+            {"pos": [-4.5, 0.0, -8.5], "label": "Perimeter Exterior Approach", "dt_sec": 45},
+            {"pos": [-4.5, 0.0, -7.0], "label": "Gate-B Shutter Forced", "dt_sec": 45},
+            {"pos": [-4.5, 0.0, -5.8], "label": "Aperture Clearance Portal Entry", "dt_sec": 20},
+            {"pos": [-1.0, 0.0, -5.5], "label": "North Aisle Corridor Transit", "dt_sec": 35},
+            {"pos": [3.2, 0.0, -2.5], "label": "Narcotics Vault Breach", "dt_sec": 120},
             {"pos": [2.0, 0.0, 3.2], "label": "Billing Till Drawer Pried", "dt_sec": 90},
-            {"pos": [-4.5, 0.0, -6.8], "label": "Doorway Portal Egress", "dt_sec": 20},
+            {"pos": [-4.5, 0.0, -5.8], "label": "Doorway Portal Egress", "dt_sec": 20},
             {"pos": [-4.5, 0.0, -8.8], "label": "Alleyway Escape Route", "dt_sec": 45},
+        ]
+        custom_frames = [
+            {
+                "frame_idx": 0, "timestamp": "02:18 AM", "phase": "EXTERIOR APPROACH",
+                "title": "Perimeter Alley Infiltration",
+                "narrative": f"Officer Hypothesis Initiation: {hypothesis_text}. Suspect approaches along the rear alleyway.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -8.5], "action": "walking"},
+                "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": False, "sensor_status": "Exterior Surveillance"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 1, "timestamp": "02:22 AM", "phase": "PORTAL BREACH",
+                "title": "Shutter Pried at Aperture",
+                "narrative": "Suspect pries Gate-B bottom clasp, lifting shutter to 0.95m clearance.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -7.0], "action": "prying_shutter"},
+                "scene_state": {"shutter_height": 0.95, "vault_toppled": False, "counter_open": False, "sensor_status": "TAMPER SWITCH ALARM"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 2, "timestamp": "02:23 AM", "phase": "DOORWAY CLEARANCE",
+                "title": "Aperture Clearance Entry",
+                "narrative": "The suspect crawls through 0.95m shutter opening into the receiving foyer.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -5.8], "action": "crawling"},
+                "scene_state": {"shutter_height": 0.95, "vault_toppled": False, "counter_open": False, "sensor_status": "BREACH CONFIRMED"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 3, "timestamp": "02:25 AM", "phase": "TARGET SAFE BREACH",
+                "title": "Vault Bay Penetration",
+                "narrative": "Suspect forces open safe in storage bay, looting Schedule H narcotics.",
+                "actor": {"visible": True, "pos": [3.2, 0.0, -2.5], "action": "looting_vault"},
+                "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": False, "sensor_status": "VAULT DOOR SENSOR"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 4, "timestamp": "02:27 AM", "phase": "BILLING TILL THEFT",
+                "title": "Retail Counter Cash Looting",
+                "narrative": "Suspect jimmies front cash register till drawer; crowbar slips to floor.",
+                "actor": {"visible": True, "pos": [2.0, 0.0, 3.2], "action": "prying_drawer"},
+                "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": True, "sensor_status": "TILL CONTACT TAMPER"},
+                "camera_preset": "overview",
+            },
+            {
+                "frame_idx": 5, "timestamp": "02:28 AM", "phase": "EGRESS & ESCAPE",
+                "title": "Alley Egress via Opened Aperture",
+                "narrative": "Suspect backtracks through Gate-B shutter portal and flees down alley.",
+                "actor": {"visible": True, "pos": [-4.5, 0.0, -8.8], "action": "fleeing"},
+                "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": True, "sensor_status": "EGRESS COMPLETED"},
+                "camera_preset": "overview",
+            },
         ]
 
     physics = calculate_physics_validation([], custom_waypoints)
-
-    custom_frames = [
-        {
-            "frame_idx": 0,
-            "timestamp": "02:18 AM",
-            "phase": "EXTERIOR APPROACH",
-            "title": "Perimeter Infiltration (Outside Walls)",
-            "narrative": f"Officer Hypothesis Initiation: {hypothesis_text}. Suspect approaches along the rear brick alleyway, strictly outside the perimeter wall boundary.",
-            "actor": {"visible": True, "pos": [-4.5, 0.0, -8.5], "action": "walking"},
-            "scene_state": {"shutter_height": 0.0, "vault_toppled": False, "counter_open": False, "sensor_status": "Exterior Surveillance"},
-            "camera_preset": "cctv_alley",
-        },
-        {
-            "frame_idx": 1,
-            "timestamp": "02:22 AM",
-            "phase": "PORTAL BREACH",
-            "title": "Shutter Pried at Aperture",
-            "narrative": "Standing in the alleyway outside the building, the suspect applies crowbar leverage to the Gate-B bottom clasp, lifting the steel shutter to 0.95m clearance.",
-            "actor": {"visible": True, "pos": [-4.5, 0.0, -7.5], "action": "prying_shutter"},
-            "scene_state": {"shutter_height": 0.95, "vault_toppled": False, "counter_open": False, "sensor_status": "TAMPER SWITCH ALARM"},
-            "evidence_marker": {"id": "M-SHUTTER", "label": "Forced Clasp Striations", "pos": [-4.5, 0.2, -6.9], "photo": "01_tampered_rear_shutter.jpg"},
-            "camera_preset": "overview",
-        },
-        {
-            "frame_idx": 2,
-            "timestamp": "02:23 AM",
-            "phase": "DOORWAY CLEARANCE",
-            "title": "Aperture Clearance Entry (Zero Wall Clipping)",
-            "narrative": "The suspect crawls through the 0.95m shutter opening into the receiving foyer. Kinematics clearance check passes with 0.10m margin above crawling torso.",
-            "actor": {"visible": True, "pos": [-4.5, 0.0, -6.8], "action": "crawling"},
-            "scene_state": {"shutter_height": 0.95, "vault_toppled": False, "counter_open": False, "sensor_status": "BREACH CONFIRMED"},
-            "camera_preset": "overview",
-        },
-        {
-            "frame_idx": 3,
-            "timestamp": "02:24 AM",
-            "phase": "TARGET SAFE BREACH",
-            "title": "Vault Bay Penetration",
-            "narrative": "Moving along the open north storage aisle around the shelving racks, the suspect forces open the Godrej narcotics safe, toppling the upper glass cabinet.",
-            "actor": {"visible": True, "pos": [3.2, 0.0, -2.5], "action": "looting_vault"},
-            "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": False, "sensor_status": "VAULT DOOR SENSOR"},
-            "evidence_marker": {"id": "M-VAULT", "label": "Toppled Cabinet Glass & Box Residue", "pos": [3.8, 0.1, -2.5], "photo": "02_toppled_narcotics_cabinet.jpg"},
-            "camera_preset": "overview",
-        },
-        {
-            "frame_idx": 4,
-            "timestamp": "02:26 AM",
-            "phase": "BILLING TILL THEFT",
-            "title": "Retail Counter Cash Looting",
-            "narrative": "The suspect walks down the central showroom corridor to the billing desk. The cash till latch is jimmied; blue crowbar slips and is dropped on the floor.",
-            "actor": {"visible": True, "pos": [2.0, 0.0, 3.2], "action": "prying_drawer"},
-            "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": True, "sensor_status": "TILL CONTACT TAMPER"},
-            "evidence_marker": {"id": "M-CROWBAR", "label": "Discarded Crowbar & Glove (#1)", "pos": [1.6, 0.05, 2.6], "photo": "03_discarded_crowbar_and_glove.jpg"},
-            "camera_preset": "overview",
-        },
-        {
-            "frame_idx": 5,
-            "timestamp": "02:27 AM",
-            "phase": "EGRESS & ESCAPE",
-            "title": "Alley Egress via Opened Aperture",
-            "narrative": "With the duffel bag packed, the suspect backtracks along the central corridor, steps out through the Gate-B shutter portal, and flees down the alley.",
-            "actor": {"visible": True, "pos": [-4.5, 0.0, -8.8], "action": "fleeing"},
-            "scene_state": {"shutter_height": 0.95, "vault_toppled": True, "counter_open": True, "sensor_status": "EGRESS COMPLETED"},
-            "camera_preset": "overview",
-        },
-    ]
-
     fit_pct = 72 if physics["is_physically_possible"] else 38
 
     scenario = {
@@ -502,6 +598,7 @@ def synthesize_custom_scenario(case_id: str, hypothesis_text: str, answers: Dict
         "trajectory": custom_waypoints,
         "interview_qa": answers,
     }
+
 
     # Save to database
     conn = get_conn()

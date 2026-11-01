@@ -310,11 +310,11 @@ function solveContinuousSimState(scenario: SandboxScenario | undefined, t: numbe
   // -------------------------------------------------------------------
   // 2. SCENARIO 1 (SERIAL SYNDICATE) & OFFICER GATE-B HYPOTHESIS
   // -------------------------------------------------------------------
-  const isSyndicateOrGateBCustom =
-    scenId.includes("scen-auto-1") ||
-    (scenId.includes("scen-custom") && (!waypoints.length || waypoints.length >= 7));
+  // Only Scenario 1 (Automated Syndicate Burglary) uses this specific baseline script.
+  // ALL Officer Custom Scenarios and any case scenarios dynamically run their own waypoints below!
+  const isSyndicateBaseline = scenId.includes("scen-auto-1");
 
-  if (isSyndicateOrGateBCustom) {
+  if (isSyndicateBaseline) {
     let pos: [number, number, number] = [-4.5, 0, -8.8];
     let rotationY = 0;
     let action: ContinuousSimState["action"] = "walking";
