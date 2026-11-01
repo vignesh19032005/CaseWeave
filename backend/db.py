@@ -171,6 +171,22 @@ SCHEMA_STATEMENTS = [
         computed_at VARCHAR(64),
         created_at VARCHAR(64)
     )""",
+    """CREATE TABLE IF NOT EXISTS case_sandbox_scenarios (
+        scenario_id VARCHAR(64) PRIMARY KEY,
+        case_id VARCHAR(64),
+        scenario_type VARCHAR(32) DEFAULT 'automated',
+        title VARCHAR(128),
+        hypothesis_summary TEXT,
+        evidence_fit_pct INT DEFAULT 75,
+        physics_validation_json LONGTEXT,
+        frames_json LONGTEXT,
+        trajectory_json LONGTEXT,
+        scene_config_json LONGTEXT,
+        interview_qa_json LONGTEXT,
+        computed_at VARCHAR(64),
+        created_at VARCHAR(64),
+        INDEX (case_id)
+    )""",
 ]
 
 

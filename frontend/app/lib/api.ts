@@ -215,4 +215,18 @@ export const api = {
   getLegalSections: () => request("/legal/sections"),
   getLegalCompliance: (caseId: string) => request(`/cases/${caseId}/legal-compliance`),
   getLegalAdvisory: (caseId: string) => request(`/cases/${caseId}/legal-advisory`),
+
+  getSandboxScenarios: (caseId: string) => request(`/cases/${caseId}/sandbox/scenarios`),
+  interviewCustomScenario: (caseId: string, hypothesisText: string) =>
+    request(`/cases/${caseId}/sandbox/custom-scenario/interview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hypothesis_text: hypothesisText }),
+    }),
+  synthesizeCustomScenario: (caseId: string, hypothesisText: string, answers: Record<string, string>) =>
+    request(`/cases/${caseId}/sandbox/custom-scenario/synthesize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hypothesis_text: hypothesisText, answers }),
+    }),
 };

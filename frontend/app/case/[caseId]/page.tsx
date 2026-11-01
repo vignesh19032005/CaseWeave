@@ -7,6 +7,8 @@ import { api, getToken, ApiError } from "../../lib/api";
 import EntityGraph from "./EntityGraph";
 
 const DynamicScene = dynamic(() => import("../../scene/DynamicScene"), { ssr: false });
+const ForensicSandboxPlayer = dynamic(() => import("../../scene/ForensicSandboxPlayer"), { ssr: false });
+import type { SandboxScenario } from "../../scene/ForensicSandboxPlayer";
 
 type EvidenceItem = {
   evidence_id: string;
@@ -137,6 +139,7 @@ function CaseStudio() {
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedConflictId, setSelectedConflictId] = useState<string | null>(null);
+  const [sandboxScenarios, setSandboxScenarios] = useState<SandboxScenario[]>([]);
 
   const DEFAULT_SCENE_DESC = "describe the room/location, door(s), and any objects or evidence visible — generate scene auto-fills this once evidence is uploaded";
   // null = not yet hand-edited, so the description below is derived from
@@ -188,12 +191,13 @@ function CaseStudio() {
 
   async function refreshDerived() {
     try {
-      const [tl, cf, links, ent, audit] = await Promise.all([
+      const [tl, cf, links, ent, audit, scenRes] = await Promise.all([
         api.getTimeline(caseId).catch(() => []),
         api.getConflicts(caseId).catch(() => []),
         api.getEvidenceLinks(caseId).catch(() => []),
         api.getEntities(caseId).catch(() => ({ entities: [], relationships: [], mentions: [] })),
         api.getAudit(caseId).catch(() => ({ chain_integrity: "", events: [] })),
+        api.getSandboxScenarios(caseId).catch(() => ({ scenarios: [] })),
       ]);
       setTimeline(tl);
       setConflicts(cf);
@@ -203,9 +207,20 @@ function CaseStudio() {
       setMentions(ent.mentions ?? []);
       setAuditStatus(audit.chain_integrity);
       setAuditEvents(audit.events ?? []);
+      if ((scenRes as any)?.scenarios) {
+        setSandboxScenarios((scenRes as any).scenarios);
+      }
     } catch {
       // best-effort — individual fetches already swallow their own errors
     }
+  }
+
+  async function handleSynthesizeCustomScenario(hypothesisText: string, answers: Record<string, string>) {
+    const res = (await api.synthesizeCustomScenario(caseId, hypothesisText, answers)) as any;
+    if (res && res.scenario) {
+      setSandboxScenarios((prev) => [res.scenario, ...prev]);
+    }
+    return res?.scenario;
   }
 
   async function refreshEvidence() {
@@ -465,6 +480,9 @@ function CaseStudio() {
               setSelectedConflictId(id);
               setTab("conflicts");
             }}
+            caseId={caseId}
+            sandboxScenarios={sandboxScenarios}
+            onGenerateCustomScenario={handleSynthesizeCustomScenario}
           />
         )}
 
@@ -987,6 +1005,9 @@ type StudioTabProps = {
   narrativeBusy: boolean;
   onGenerateNarrative: () => void;
   onJumpToConflict: (id: string) => void;
+  caseId: string;
+  sandboxScenarios: SandboxScenario[];
+  onGenerateCustomScenario: (hypothesis: string, answers: Record<string, string>) => Promise<any>;
 };
 
 function StudioTab(props: StudioTabProps) {
@@ -1020,6 +1041,9 @@ function StudioTab(props: StudioTabProps) {
     narrativeBusy,
     onGenerateNarrative,
     onJumpToConflict,
+    caseId,
+    sandboxScenarios,
+    onGenerateCustomScenario,
   } = props;
 
   const selectedPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1091,44 +1115,21 @@ function StudioTab(props: StudioTabProps) {
           )}
         </div>
 
-        <div className="border border-zinc-800 rounded-lg p-4">
-          <h2 className="text-sm uppercase tracking-wide text-zinc-500 mb-1">Incident reconstruction</h2>
-          <p className="text-[11px] text-zinc-600 mb-3">
-            Procedural approximation of the scene — approximate geometry from vision description, not a precision
-            3D reconstruction. Generate it, then select a timeline event to see linked evidence and conflicts below.
-            {sceneDescAuto && " Description below is auto-filled from this case's uploaded evidence — edit it to steer the scene."}
-          </p>
-          <div className="flex gap-2 mb-3 flex-wrap">
-            <input
-              className="flex-1 min-w-[240px] bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs"
-              value={sceneDesc}
-              onChange={(e) => setSceneDesc(e.target.value)}
-            />
-            {(["width_m", "length_m", "height_m"] as const).map((dim) => (
-              <input
-                key={dim}
-                type="number"
-                className="w-20 bg-zinc-900 border border-zinc-800 rounded px-2 py-2 text-xs"
-                value={sceneDims[dim]}
-                title={dim.replace("_m", " (m)")}
-                onChange={(e) => setSceneDims({ ...sceneDims, [dim]: parseFloat(e.target.value) || 0 })}
-              />
-            ))}
-            <button
-              className="bg-indigo-600 hover:bg-indigo-500 rounded px-3 py-2 text-xs font-medium disabled:opacity-50"
-              onClick={onGenerateScene}
-              disabled={sceneBusy}
-            >
-              {sceneBusy ? "Generating..." : "Generate scene"}
-            </button>
+                <div className="border border-zinc-800 rounded-xl p-5 bg-zinc-950/80 shadow-xl">
+          <div className="mb-4">
+            <h2 className="text-sm uppercase tracking-wider text-zinc-200 font-bold flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Virtual Crime Scene Sandbox & Scenario Testing Engine
+            </h2>
+            <p className="text-[11px] text-zinc-400 mt-1">
+              Top 3 Forensically Plausible Scenarios and Officer Custom Hypothesis Builder with physical kinematics validation and optical line-of-sight checks.
+            </p>
           </div>
-          {sceneJsx ? (
-            <DynamicScene jsx={sceneJsx} />
-          ) : (
-            <div className="h-48 flex items-center justify-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded">
-              No scene generated yet.
-            </div>
-          )}
+          <ForensicSandboxPlayer
+            scenarios={sandboxScenarios}
+            caseId={caseId}
+            onGenerateCustomScenario={onGenerateCustomScenario}
+          />
         </div>
 
         <div className="border border-zinc-800 rounded-lg p-4">

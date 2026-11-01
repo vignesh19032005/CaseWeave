@@ -530,6 +530,44 @@ def create_scene(case_id: str, body: SceneRequest, user: dict = Depends(auth.get
     return result
 
 
+# ---------------------------------- Virtual Crime Scene Sandbox & Scenarios ----
+
+class CustomScenarioInterviewRequest(BaseModel):
+    hypothesis_text: str
+
+
+class CustomScenarioSynthesizeRequest(BaseModel):
+    hypothesis_text: str
+    answers: dict = {}
+
+
+@app.get("/cases/{case_id}/sandbox/scenarios")
+def get_sandbox_scenarios_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """Fetch Top 3 automated scenarios and officer custom scenarios."""
+    from pipeline.sandbox import get_case_sandbox_scenarios
+    return get_case_sandbox_scenarios(case_id)
+
+
+@app.post("/cases/{case_id}/sandbox/custom-scenario/interview")
+def custom_scenario_interview_endpoint(
+    case_id: str, body: CustomScenarioInterviewRequest, user: dict = Depends(auth.get_current_user)
+):
+    """Generate 3 Socratic Forensic Questions to verify officer hypothesis."""
+    from pipeline.sandbox import generate_socratic_interview
+    questions = generate_socratic_interview(case_id, body.hypothesis_text)
+    return {"case_id": case_id, "hypothesis_text": body.hypothesis_text, "questions": questions}
+
+
+@app.post("/cases/{case_id}/sandbox/custom-scenario/synthesize")
+def custom_scenario_synthesize_endpoint(
+    case_id: str, body: CustomScenarioSynthesizeRequest, user: dict = Depends(auth.get_current_user)
+):
+    """Synthesize officer custom scenario into a full 3D simulation with physics validation."""
+    from pipeline.sandbox import synthesize_custom_scenario
+    scenario = synthesize_custom_scenario(case_id, body.hypothesis_text, body.answers)
+    return scenario
+
+
 # ----------------------------------------------------------- Segmentation (Stage 8) ----
 
 class SegmentRequest(BaseModel):
