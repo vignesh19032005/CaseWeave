@@ -530,6 +530,22 @@ def create_scene(case_id: str, body: SceneRequest, user: dict = Depends(auth.get
     return result
 
 
+# ----------------------------------------------------------- 4D Incident Simulation ----
+
+@app.get("/cases/{case_id}/simulation")
+def get_simulation_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """Fetch 4D incident simulation data (keyframes, trajectory, spatial telemetry)."""
+    from pipeline.simulation import get_case_simulation
+    return get_case_simulation(case_id, force_recompute=False)
+
+
+@app.post("/cases/{case_id}/simulation/generate")
+def generate_simulation_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """Force dynamic regeneration of 4D incident simulation from latest timeline events."""
+    from pipeline.simulation import get_case_simulation
+    return get_case_simulation(case_id, force_recompute=True)
+
+
 # ----------------------------------------------------------- Segmentation (Stage 8) ----
 
 class SegmentRequest(BaseModel):

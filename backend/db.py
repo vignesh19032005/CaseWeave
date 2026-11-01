@@ -171,6 +171,15 @@ SCHEMA_STATEMENTS = [
         computed_at VARCHAR(64),
         created_at VARCHAR(64)
     )""",
+    """CREATE TABLE IF NOT EXISTS case_simulations (
+        case_id VARCHAR(64) PRIMARY KEY,
+        frames_json LONGTEXT,
+        trajectory_json LONGTEXT,
+        scene_config_json LONGTEXT,
+        telemetry_json LONGTEXT,
+        computed_at VARCHAR(64),
+        created_at VARCHAR(64)
+    )""",
 ]
 
 

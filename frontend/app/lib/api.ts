@@ -215,4 +215,7 @@ export const api = {
   getLegalSections: () => request("/legal/sections"),
   getLegalCompliance: (caseId: string) => request(`/cases/${caseId}/legal-compliance`),
   getLegalAdvisory: (caseId: string) => request(`/cases/${caseId}/legal-advisory`),
+
+  getSimulation: (caseId: string) => request(`/cases/${caseId}/simulation`),
+  generateSimulation: (caseId: string) => request(`/cases/${caseId}/simulation/generate`, { method: "POST" }),
 };

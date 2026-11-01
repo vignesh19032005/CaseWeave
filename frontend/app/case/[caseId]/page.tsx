@@ -7,6 +7,7 @@ import { api, getToken, ApiError } from "../../lib/api";
 import EntityGraph from "./EntityGraph";
 
 const DynamicScene = dynamic(() => import("../../scene/DynamicScene"), { ssr: false });
+const SimulationPlayer = dynamic(() => import("../../scene/SimulationPlayer"), { ssr: false });
 
 type EvidenceItem = {
   evidence_id: string;
@@ -433,6 +434,8 @@ function CaseStudio() {
 
         {tab === "studio" && (
           <StudioTab
+            caseId={caseId}
+            SimulationPlayer={SimulationPlayer}
             timeline={timeline}
             conflictKeys={conflictKeys}
             selectedEventId={selectedEventId}
@@ -958,6 +961,8 @@ type SceneComponent = ComponentType<{ jsx: string }>;
 type SceneDims = { width_m: number; length_m: number; height_m: number };
 
 type StudioTabProps = {
+  caseId: string;
+  SimulationPlayer: ComponentType<any>;
   timeline: TimelineEvent[];
   conflictKeys: Set<string>;
   selectedEventId: string | null;
@@ -991,6 +996,8 @@ type StudioTabProps = {
 
 function StudioTab(props: StudioTabProps) {
   const {
+    caseId,
+    SimulationPlayer,
     timeline,
     conflictKeys,
     selectedEventId,
@@ -1021,6 +1028,40 @@ function StudioTab(props: StudioTabProps) {
     onGenerateNarrative,
     onJumpToConflict,
   } = props;
+
+  const [simulation, setSimulation] = useState<any>(null);
+  const [simLoading, setSimLoading] = useState(false);
+  const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [cameraPreset, setCameraPreset] = useState("overview");
+  const [viewMode, setViewMode] = useState<"simulation" | "procedural">("simulation");
+
+  useEffect(() => {
+    if (!caseId) return;
+    setSimLoading(true);
+    api
+      .getSimulation(caseId)
+      .then((data) => {
+        setSimulation(data);
+        if (data?.frames?.length > 0) setCurrentFrameIdx(0);
+      })
+      .catch((e) => console.error("Could not load simulation:", e))
+      .finally(() => setSimLoading(false));
+  }, [caseId]);
+
+  const handleRegenerateSim = async () => {
+    setSimLoading(true);
+    try {
+      const data = await api.generateSimulation(caseId);
+      setSimulation(data);
+      setCurrentFrameIdx(0);
+    } catch (e) {
+      console.error("Could not regenerate simulation:", e);
+    } finally {
+      setSimLoading(false);
+    }
+  };
 
   const selectedPanelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1091,42 +1132,118 @@ function StudioTab(props: StudioTabProps) {
           )}
         </div>
 
-        <div className="border border-zinc-800 rounded-lg p-4">
-          <h2 className="text-sm uppercase tracking-wide text-zinc-500 mb-1">Incident reconstruction</h2>
-          <p className="text-[11px] text-zinc-600 mb-3">
-            Procedural approximation of the scene — approximate geometry from vision description, not a precision
-            3D reconstruction. Generate it, then select a timeline event to see linked evidence and conflicts below.
-            {sceneDescAuto && " Description below is auto-filled from this case's uploaded evidence — edit it to steer the scene."}
-          </p>
-          <div className="flex gap-2 mb-3 flex-wrap">
-            <input
-              className="flex-1 min-w-[240px] bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs"
-              value={sceneDesc}
-              onChange={(e) => setSceneDesc(e.target.value)}
-            />
-            {(["width_m", "length_m", "height_m"] as const).map((dim) => (
-              <input
-                key={dim}
-                type="number"
-                className="w-20 bg-zinc-900 border border-zinc-800 rounded px-2 py-2 text-xs"
-                value={sceneDims[dim]}
-                title={dim.replace("_m", " (m)")}
-                onChange={(e) => setSceneDims({ ...sceneDims, [dim]: parseFloat(e.target.value) || 0 })}
-              />
-            ))}
-            <button
-              className="bg-indigo-600 hover:bg-indigo-500 rounded px-3 py-2 text-xs font-medium disabled:opacity-50"
-              onClick={onGenerateScene}
-              disabled={sceneBusy}
-            >
-              {sceneBusy ? "Generating..." : "Generate scene"}
-            </button>
+        <div className="border border-zinc-800 rounded-xl p-4 bg-zinc-950/60 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3 mb-4">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode("simulation")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                  viewMode === "simulation"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/40"
+                    : "bg-zinc-900 text-zinc-400 hover:text-white"
+                }`}
+              >
+                <span>🎬</span>
+                <span>4D Forensic Simulation</span>
+                {simulation?.cached && (
+                  <span className="text-[10px] bg-indigo-950 text-indigo-300 px-1.5 py-0.2 rounded border border-indigo-700/60 font-mono">
+                    ⚡ 0.1s Cache
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setViewMode("procedural")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                  viewMode === "procedural"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/40"
+                    : "bg-zinc-900 text-zinc-400 hover:text-white"
+                }`}
+              >
+                <span>📐</span>
+                <span>Procedural Room Shell</span>
+              </button>
+            </div>
+
+            {viewMode === "simulation" && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRegenerateSim}
+                  disabled={simLoading}
+                  className="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 font-medium disabled:opacity-50 transition"
+                >
+                  {simLoading ? "Updating..." : "🔄 Refresh Simulation"}
+                </button>
+              </div>
+            )}
           </div>
-          {sceneJsx ? (
-            <DynamicScene jsx={sceneJsx} />
+
+          {viewMode === "simulation" ? (
+            simLoading && !simulation ? (
+              <div className="h-96 flex flex-col items-center justify-center text-xs text-zinc-400 border border-zinc-800 rounded-lg animate-pulse gap-2">
+                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                <span>Generating 4D Chronological Incident Simulation...</span>
+              </div>
+            ) : simulation ? (
+              <SimulationPlayer
+                simulation={simulation}
+                currentFrameIdx={currentFrameIdx}
+                setCurrentFrameIdx={setCurrentFrameIdx}
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                playbackSpeed={playbackSpeed}
+                setPlaybackSpeed={setPlaybackSpeed}
+                cameraPreset={cameraPreset}
+                setCameraPreset={setCameraPreset}
+              />
+            ) : (
+              <div className="h-64 flex flex-col items-center justify-center text-xs text-zinc-500 border border-dashed border-zinc-800 rounded gap-2">
+                <span>No simulation data generated yet.</span>
+                <button
+                  onClick={handleRegenerateSim}
+                  className="px-3 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-500"
+                >
+                  Generate 4D Simulation
+                </button>
+              </div>
+            )
           ) : (
-            <div className="h-48 flex items-center justify-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded">
-              No scene generated yet.
+            <div>
+              <p className="text-[11px] text-zinc-600 mb-3">
+                Procedural approximation of the scene — approximate geometry from vision description, not a precision
+                3D reconstruction. Generate it, then select a timeline event to see linked evidence and conflicts below.
+                {sceneDescAuto && " Description below is auto-filled from this case's uploaded evidence — edit it to steer the scene."}
+              </p>
+              <div className="flex gap-2 mb-3 flex-wrap">
+                <input
+                  className="flex-1 min-w-[240px] bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs"
+                  value={sceneDesc}
+                  onChange={(e) => setSceneDesc(e.target.value)}
+                />
+                {(["width_m", "length_m", "height_m"] as const).map((dim) => (
+                  <input
+                    key={dim}
+                    type="number"
+                    className="w-20 bg-zinc-900 border border-zinc-800 rounded px-2 py-2 text-xs"
+                    value={sceneDims[dim]}
+                    title={dim.replace("_m", " (m)")}
+                    onChange={(e) => setSceneDims({ ...sceneDims, [dim]: parseFloat(e.target.value) || 0 })}
+                  />
+                ))}
+                <button
+                  className="bg-indigo-600 hover:bg-indigo-500 rounded px-3 py-2 text-xs font-medium disabled:opacity-50"
+                  onClick={onGenerateScene}
+                  disabled={sceneBusy}
+                >
+                  {sceneBusy ? "Generating..." : "Generate scene"}
+                </button>
+              </div>
+              {sceneJsx ? (
+                <DynamicScene jsx={sceneJsx} />
+              ) : (
+                <div className="h-48 flex items-center justify-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded">
+                  No scene generated yet.
+                </div>
+              )}
             </div>
           )}
         </div>
