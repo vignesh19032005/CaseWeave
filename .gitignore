@@ -32,11 +32,12 @@ backend/models/
 backend/output_report_*
 backend/timeline_*
 
-# Logs
+# Logs & Test Artifacts
 *.log
 backend/*.log
 backend/download_*.log
 frontend/frontend.log
+test-screenshots/
 frontend/test-screenshots/
 
 # Node / Next.js
