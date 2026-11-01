@@ -187,35 +187,55 @@ function RealisticRoomEnvironment({
 
   return (
     <group>
-      {/* Lighting: Realistic Multi-Point Forensic Illumination */}
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[10, 18, 10]} intensity={0.8} castShadow />
-      <pointLight position={[-4.5, 3.2, -6.0]} intensity={sensorStatus.includes("ALARM") ? 2.5 : 0.6} color={sensorStatus.includes("ALARM") ? "#ef4444" : "#f8fafc"} />
-      <pointLight position={[3.8, 3.0, -2.5]} intensity={isVaultToppled ? 1.8 : 0.7} color={isVaultToppled ? "#f59e0b" : "#38bdf8"} />
-      <pointLight position={[2.2, 2.5, 3.8]} intensity={isCounterOpen ? 1.8 : 0.6} color={isCounterOpen ? "#ef4444" : "#ffffff"} />
+      {/* Lighting: Brilliant Multi-Point Daylight & Forensic Illumination */}
+      <ambientLight intensity={0.95} />
+      <directionalLight position={[10, 20, 10]} intensity={1.3} castShadow />
+      <directionalLight position={[-10, 16, -10]} intensity={0.9} />
 
-      {/* Concrete Warehouse Floor Plane */}
+      {/* Overhead Fluorescent Ceiling Strip Lights (Daylight 5000K) */}
+      <pointLight position={[0, 3.8, -4.0]} intensity={2.0} distance={18} color="#f8fafc" />
+      <pointLight position={[0, 3.8, 0.5]} intensity={2.0} distance={18} color="#f8fafc" />
+      <pointLight position={[0, 3.8, 5.0]} intensity={2.0} distance={18} color="#f8fafc" />
+      {/* Exterior Streetlamp Light */}
+      <pointLight position={[-4.5, 3.8, -8.5]} intensity={2.2} distance={15} color="#fef08a" />
+
+      {/* Status Alert Spotlights */}
+      <pointLight position={[-4.5, 3.2, -6.0]} intensity={sensorStatus.includes("ALARM") ? 2.5 : 0.8} color={sensorStatus.includes("ALARM") ? "#ef4444" : "#f8fafc"} />
+      <pointLight position={[3.8, 3.0, -2.5]} intensity={isVaultToppled ? 2.2 : 0.9} color={isVaultToppled ? "#f59e0b" : "#38bdf8"} />
+      <pointLight position={[2.2, 2.5, 3.8]} intensity={isCounterOpen ? 2.2 : 0.8} color={isCounterOpen ? "#ef4444" : "#ffffff"} />
+
+      {/* Visible Overhead Fluorescent Light Tubes */}
+      {[-4.0, 0.5, 5.0].map((zPos, idx) => (
+        <group key={idx} position={[0, 3.65, zPos]}>
+          <mesh>
+            <boxGeometry args={[4.2, 0.08, 0.35]} />
+            <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1.4} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Clean Commercial Epoxy/Tile Floor (High Visibility) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[16, 20]} />
-        <meshStandardMaterial color="#18181b" roughness={0.85} metalness={0.15} />
+        <planeGeometry args={[18, 22]} />
+        <meshStandardMaterial color="#94a3b8" roughness={0.4} metalness={0.2} />
       </mesh>
-      <gridHelper args={[24, 24, "#27272a", "#18181b"]} position={[0, 0.001, 0]} />
+      <gridHelper args={[24, 24, "#475569", "#64748b"]} position={[0, 0.001, 0]} />
 
-      {/* Architectural Cutaway Walls (Low Perimeter - No camera clipping) */}
+      {/* Architectural Cutaway Walls (Clean Diffuse Materials) */}
       {/* Rear Brick Alley Wall */}
       <mesh position={[0, 1.6, -7.1]}>
         <boxGeometry args={[16, 3.2, 0.4]} />
-        <meshStandardMaterial color="#3f3f46" roughness={0.9} />
+        <meshStandardMaterial color="#64748b" roughness={0.7} metalness={0.1} />
       </mesh>
       {/* Left Wall Cutaway */}
       <mesh position={[-7.8, 1.0, 0]}>
         <boxGeometry args={[0.4, 2.0, 14]} />
-        <meshStandardMaterial color="#27272a" transparent opacity={0.5} />
+        <meshStandardMaterial color="#475569" transparent opacity={0.6} />
       </mesh>
       {/* Right Wall Cutaway */}
       <mesh position={[7.8, 1.0, 0]}>
         <boxGeometry args={[0.4, 2.0, 14]} />
-        <meshStandardMaterial color="#27272a" transparent opacity={0.5} />
+        <meshStandardMaterial color="#475569" transparent opacity={0.6} />
       </mesh>
 
       {/* -------------------- 1. GATE-B ROLLING SHUTTER (CLICKABLE) -------------------- */}
@@ -480,36 +500,38 @@ function RealisticRoomEnvironment({
       </group>
 
       {/* -------------------- 8. 3D SUSPECT AVATAR (NO CLIPPING) -------------------- */}
-      {frame?.actor?.visible && (
-        <group
-          ref={actorRef}
-          position={frame.actor.pos}
-          onClick={(e) => {
-            e.stopPropagation();
-            onObjectClick({
-              name: "Suspect Silhouette",
-              category: "Reconstructed Actor",
-              description: "Male, approx 5'9\", dark hooded rain jacket, white sports shoes. Modeled with physical clearance from all fixtures.",
-            });
-          }}
-        >
-          {/* Soft Ground Shadow Disc */}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-            <circleGeometry args={[0.45, 32]} />
-            <meshBasicMaterial color="#000000" transparent opacity={0.6} />
-          </mesh>
+      {frame?.actor?.visible && (() => {
+        const isCrouching = frame.actor.action === "crawling" || frame.actor.action === "ducking" || (frame.actor.pos && frame.actor.pos[2] > -7.3 && frame.actor.pos[2] < -6.5);
+        return (
+          <group
+            ref={actorRef}
+            position={frame.actor.pos}
+            onClick={(e) => {
+              e.stopPropagation();
+              onObjectClick({
+                name: "Suspect Silhouette",
+                category: "Reconstructed Actor",
+                description: "Male, approx 5'9\", dark hooded rain jacket, white sports shoes. Modeled with physical clearance from all fixtures.",
+              });
+            }}
+          >
+            {/* Soft Ground Shadow Disc */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+              <circleGeometry args={[0.45, 32]} />
+              <meshBasicMaterial color="#000000" transparent opacity={0.6} />
+            </mesh>
 
-          {/* Torso: Dark Hooded Jacket */}
-          <mesh position={[0, 1.1, 0]}>
-            <capsuleGeometry args={[0.26, 0.75, 8, 16]} />
-            <meshStandardMaterial color="#09090b" roughness={0.5} />
-          </mesh>
+            {/* Torso: Dark Hooded Jacket (Crouches smoothly to clear 0.95m shutter opening) */}
+            <mesh position={[0, isCrouching ? 0.55 : 1.1, 0]} rotation={[isCrouching ? 0.45 : 0, 0, 0]}>
+              <capsuleGeometry args={[0.26, isCrouching ? 0.55 : 0.75, 8, 16]} />
+              <meshStandardMaterial color="#1e293b" roughness={0.4} />
+            </mesh>
 
-          {/* Head & Hood */}
-          <mesh position={[0, 1.7, 0]}>
-            <sphereGeometry args={[0.22, 16, 16]} />
-            <meshStandardMaterial color="#18181b" roughness={0.6} />
-          </mesh>
+            {/* Head & Hood */}
+            <mesh position={[0, isCrouching ? 0.85 : 1.7, isCrouching ? 0.2 : 0]}>
+              <sphereGeometry args={[0.22, 16, 16]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.5} />
+            </mesh>
 
           {/* Legs */}
           <mesh position={[-0.12, 0.45, 0]}>
@@ -531,7 +553,8 @@ function RealisticRoomEnvironment({
             <meshStandardMaterial color="#f8fafc" />
           </mesh>
         </group>
-      )}
+        );
+      })()}
     </group>
   );
 }
