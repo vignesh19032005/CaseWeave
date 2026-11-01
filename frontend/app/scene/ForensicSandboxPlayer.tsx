@@ -49,15 +49,11 @@ export interface SandboxScenario {
   interview_qa?: Record<string, string>;
 }
 
-// Camera presets for close-up and tactical angles
+// Core 3 forensic viewpoints (all close-up exhibits are inspected via 100% interactive direct mesh clicks)
 const CAMERA_PRESETS: Record<string, { pos: [number, number, number]; target: [number, number, number]; label: string }> = {
-  overview: { pos: [12, 11, 12], target: [0, 1, 0], label: "🌐 360° Free Orbit" },
+  overview: { pos: [12, 11, 12], target: [0, 1, 0], label: "🌐 Free 360° Orbit" },
   cctv_alley: { pos: [-5.8, 3.8, -7.5], target: [-4.5, 1.2, -5.5], label: "📹 CCTV-2 Alley Cam" },
-  shutter_close: { pos: [-4.5, 1.5, -4.0], target: [-4.5, 1.0, -6.5], label: "🚪 Shutter Breach View" },
-  vault_close: { pos: [2.0, 2.2, -2.5], target: [3.8, 1.0, -2.5], label: "🔒 Vault Interior" },
-  counter_close: { pos: [0.8, 1.8, 3.8], target: [2.2, 0.9, 3.8], label: "💵 Cash Till View" },
   guard_sightline: { pos: [-8.5, 1.5, -5.5], target: [-4.5, 1.2, -6.85], label: "👁️ Guard Sightline POV" },
-  suspect_pov: { pos: [-4.2, 1.7, -4.0], target: [-2.0, 1.2, -2.0], label: "🚶 Suspect POV" },
 };
 
 function SmoothCameraController({
@@ -141,8 +137,17 @@ function SmoothCameraController({
       minDistance={0.5}
       maxDistance={50}
       maxPolarAngle={Math.PI / 2.02}
+      touches={{
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN,
+      }}
+      mouseButtons={{
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN,
+      }}
       onStart={() => {
-        // Immediate user takeover on mouse rotate/pan/zoom
+        // Immediate user takeover on mouse rotate/pan/zoom or touch drag/pinch
         isTransitioning.current = false;
       }}
     />
@@ -751,29 +756,37 @@ export default function ForensicSandboxPlayer({
           </div>
         </div>
 
-        {/* Camera Angles Toolbar */}
-        <div className="flex items-center gap-1">
-          {Object.entries(CAMERA_PRESETS).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => {
+        {/* Collapsed 3-Perspective Viewpoint Dropdown */}
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="text-zinc-300">📷 Viewpoint:</span>
+          </label>
+          <div className="relative">
+            <select
+              value={cameraPreset}
+              onChange={(e) => {
+                const k = e.target.value;
                 setCameraPreset(k);
+                setCameraFocusTarget(null);
                 if (k === "guard_sightline") setShowGuardSightline(true);
               }}
-              className={`px-2 py-1 rounded text-[10px] font-medium transition ${
-                cameraPreset === k ? "bg-indigo-600 text-white shadow" : "bg-zinc-900 text-zinc-400 hover:text-white"
-              }`}
+              className="bg-zinc-900 border border-zinc-700/80 hover:border-indigo-500 rounded-lg px-2.5 py-1 text-xs font-semibold text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow transition pr-7 appearance-none"
             >
-              {v.label}
-            </button>
-          ))}
+              <option value="overview">🌐 Free 360° Orbit (Mouse & Touch)</option>
+              <option value="cctv_alley">📹 CCTV-2 Alley Cam (Lens Angle)</option>
+              <option value="guard_sightline">👁️ Guard Sightline POV (Witness Line-of-Sight)</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-zinc-400 text-[10px]">
+              ▼
+            </div>
+          </div>
         </div>
       </div>
 
       {/* ----------------- 3D CANVAS + TACTICAL INSPECTION HUD ----------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[520px]">
         {/* Interactive 3D Canvas */}
-        <div className="lg:col-span-2 relative bg-[#090a0f] h-full cursor-grab active:cursor-grabbing select-none">
+        <div className="lg:col-span-2 relative bg-[#090a0f] h-full cursor-grab active:cursor-grabbing select-none touch-none" style={{ touchAction: "none" }}>
           <Canvas camera={{ position: [12, 11, 12], fov: 46 }} style={{ width: "100%", height: "100%" }}>
             <SmoothCameraController
               preset={cameraPreset}
@@ -833,12 +846,14 @@ export default function ForensicSandboxPlayer({
           {/* Bottom-Left: Interactive Controls Legend */}
           <div className="absolute bottom-3 left-3 hidden md:flex items-center gap-2 bg-zinc-950/90 backdrop-blur border border-zinc-800 rounded-lg px-3 py-1.5 text-[11px] text-zinc-300 font-mono shadow-2xl z-10 pointer-events-none">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-emerald-400 font-bold">Interactive:</span>
-            <span>Left-Drag: Rotate 360°</span>
+            <span className="text-emerald-400 font-bold">100% Mouse & Touch:</span>
+            <span>1-Finger / Left-Drag: Orbit 360°</span>
+            <span className="text-zinc-600">|</span>
+            <span>2-Finger / Scroll: Zoom</span>
             <span className="text-zinc-600">|</span>
             <span>Right-Drag: Pan</span>
             <span className="text-zinc-600">|</span>
-            <span>Scroll: Zoom In/Out</span>
+            <span>Tap Mesh to Focus</span>
           </div>
 
           {/* Conflict Warning Flare */}
