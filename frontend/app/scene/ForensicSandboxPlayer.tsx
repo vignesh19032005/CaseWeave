@@ -826,106 +826,61 @@ function RealisticRoomEnvironment({
       </mesh>
       <gridHelper args={[24, 24, "#475569", "#64748b"]} position={[0, 0.001, 0]} />
 
-      {/* ----------------- 2. ARCHITECTURAL WALLS & CORRIDORS (ALL 4 SIDES ENCLOSED WITH GATE-B APERTURE) ----------------- */}
-      {/* A. REAR WALL (z = -7.1m) WITH PRECISE GATE-B DOORWAY APERTURE (NOT BLOCKED BY SOLID WALL) */}
-      {/* Rear Wall Left Section (from x = -8.0 to x = -6.1) */}
-      <mesh position={[-7.05, 1.6, -7.1]}>
-        <boxGeometry args={[1.9, 3.2, 0.4]} />
-        <meshStandardMaterial color="#64748b" roughness={0.7} metalness={0.1} />
+      {/* ----------------- 2. PARAMETRIC 4-WALLED ARCHITECTURAL ENCLOSURE ----------------- */}
+      {/* A. REAR WALL (z = -7.0m) WITH INTEGRATED GATE-B DOORWAY APERTURE */}
+      {/* Wall Left of Shutter */}
+      <mesh position={[-6.65, 1.5, -7.0]}>
+        <boxGeometry args={[1.7, 3.0, 0.35]} />
+        <meshStandardMaterial color="#334155" roughness={0.5} />
+      </mesh>
+      {/* Header Lintel over Shutter Opening */}
+      <mesh position={[-4.5, 2.85, -7.0]}>
+        <boxGeometry args={[2.6, 0.3, 0.35]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.4} />
+      </mesh>
+      {/* Wall Right of Shutter */}
+      <mesh position={[2.15, 1.5, -7.0]}>
+        <boxGeometry args={[10.7, 3.0, 0.35]} />
+        <meshStandardMaterial color="#334155" roughness={0.5} />
       </mesh>
 
-      {/* Rear Doorway Header Lintel above Gate-B Shutter (from x = -6.1 to x = -2.9, above y = 2.9) */}
-      <mesh position={[-4.5, 3.15, -7.1]}>
-        <boxGeometry args={[3.2, 0.5, 0.4]} />
-        <meshStandardMaterial color="#475569" roughness={0.7} metalness={0.2} />
+      {/* B. LEFT PERIMETER WALL (x = -7.5m) */}
+      <mesh position={[-7.5, 1.5, 0]}>
+        <boxGeometry args={[0.35, 3.0, 14.35]} />
+        <meshStandardMaterial color="#334155" roughness={0.5} />
       </mesh>
 
-      {/* Rear Wall Right Section (from x = -2.9 to x = 8.0) */}
-      <mesh position={[2.55, 1.6, -7.1]}>
-        <boxGeometry args={[10.9, 3.2, 0.4]} />
-        <meshStandardMaterial color="#64748b" roughness={0.7} metalness={0.1} />
+      {/* C. RIGHT PERIMETER WALL (x = +7.5m) */}
+      <mesh position={[7.5, 1.5, 0]}>
+        <boxGeometry args={[0.35, 3.0, 14.35]} />
+        <meshStandardMaterial color="#334155" roughness={0.5} />
       </mesh>
 
-      {/* B. LEFT PERIMETER WALL (x = -7.8m, from z = -7.1 to +7.1) */}
-      <mesh position={[-7.8, 1.4, 0]}>
-        <boxGeometry args={[0.4, 2.8, 14.6]} />
-        <meshStandardMaterial color="#475569" transparent opacity={0.75} roughness={0.6} />
+      {/* D. FRONT FACADE WALL (z = +7.0m) */}
+      {/* Front Left Wall Section */}
+      <mesh position={[-4.5, 1.5, 7.0]}>
+        <boxGeometry args={[6.0, 3.0, 0.35]} />
+        <meshStandardMaterial color="#334155" roughness={0.5} />
+      </mesh>
+      {/* Front Entrance Header Lintel */}
+      <mesh position={[-0.5, 2.85, 7.0]}>
+        <boxGeometry args={[2.0, 0.3, 0.35]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.4} />
+      </mesh>
+      {/* Front Entrance Glass Double Doors */}
+      <mesh position={[-0.5, 1.35, 7.0]}>
+        <boxGeometry args={[1.9, 2.7, 0.08]} />
+        <meshStandardMaterial color="#38bdf8" transparent opacity={0.3} roughness={0.1} metalness={0.8} />
+      </mesh>
+      {/* Front Right Wall Section */}
+      <mesh position={[4.25, 1.5, 7.0]}>
+        <boxGeometry args={[6.5, 3.0, 0.35]} />
+        <meshStandardMaterial color="#334155" roughness={0.5} />
       </mesh>
 
-      {/* C. RIGHT PERIMETER WALL (x = +7.8m, from z = -7.1 to +7.1) */}
-      <mesh position={[7.8, 1.4, 0]}>
-        <boxGeometry args={[0.4, 2.8, 14.6]} />
-        <meshStandardMaterial color="#475569" transparent opacity={0.75} roughness={0.6} />
-      </mesh>
-
-      {/* D. FRONT COMMERCIAL FACADE & ENTRANCE (4th SIDE at z = +7.1m) */}
-      {/* Front Left Wall Section (from x = -8.0 to x = -4.5) */}
-      <mesh position={[-6.25, 1.4, 7.1]}>
-        <boxGeometry args={[3.5, 2.8, 0.4]} />
-        <meshStandardMaterial color="#64748b" roughness={0.7} metalness={0.1} />
-      </mesh>
-
-      {/* Front Commercial Large Glass Display Window (from x = -4.5 to x = 0.5) */}
-      <mesh position={[-2.0, 1.4, 7.1]}>
-        <boxGeometry args={[5.0, 2.1, 0.08]} />
-        <meshStandardMaterial color="#38bdf8" transparent opacity={0.35} roughness={0.1} metalness={0.8} />
-      </mesh>
-      {/* Window Lower Brick Sill */}
-      <mesh position={[-2.0, 0.2, 7.1]}>
-        <boxGeometry args={[5.0, 0.4, 0.4]} />
-        <meshStandardMaterial color="#475569" roughness={0.8} />
-      </mesh>
-      {/* Window Frame Top Molding */}
-      <mesh position={[-2.0, 2.5, 7.1]}>
-        <boxGeometry args={[5.0, 0.1, 0.15]} />
-        <meshStandardMaterial color="#0f172a" metalness={0.9} />
-      </mesh>
-
-      {/* Front Entrance Double Glass Doors (from x = 0.5 to x = 3.5) */}
-      <group position={[2.0, 0, 7.1]}>
-        {/* Left Glass Door Leaf */}
-        <mesh position={[-0.72, 1.25, 0]}>
-          <boxGeometry args={[1.4, 2.5, 0.08]} />
-          <meshStandardMaterial color="#67e8f9" transparent opacity={0.4} roughness={0.1} metalness={0.7} />
-        </mesh>
-        {/* Right Glass Door Leaf */}
-        <mesh position={[0.72, 1.25, 0]}>
-          <boxGeometry args={[1.4, 2.5, 0.08]} />
-          <meshStandardMaterial color="#67e8f9" transparent opacity={0.4} roughness={0.1} metalness={0.7} />
-        </mesh>
-        {/* Door Hardware Handles */}
-        <mesh position={[-0.1, 1.2, 0.08]}>
-          <boxGeometry args={[0.04, 0.4, 0.08]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.95} />
-        </mesh>
-        <mesh position={[0.1, 1.2, 0.08]}>
-          <boxGeometry args={[0.04, 0.4, 0.08]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.95} />
-        </mesh>
-      </group>
-
-      {/* Front Right Wall Section (from x = 3.5 to x = 8.0) */}
-      <mesh position={[5.75, 1.4, 7.1]}>
-        <boxGeometry args={[4.5, 2.8, 0.4]} />
-        <meshStandardMaterial color="#64748b" roughness={0.7} metalness={0.1} />
-      </mesh>
-
-      {/* Overhead Storefront Fascia / Sign Board across entire front */}
-      <group position={[0, 3.1, 7.1]}>
-        <mesh>
-          <boxGeometry args={[16.0, 0.6, 0.45]} />
-          <meshStandardMaterial color="#047857" roughness={0.4} />
-        </mesh>
-        {/* Illuminated Pharmacy Green Cross Sign */}
-        <mesh position={[-6.2, 0, 0.25]}>
-          <boxGeometry args={[0.35, 0.35, 0.06]} />
-          <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={1.8} />
-        </mesh>
-      </group>
-
-      {/* ----------------- 3. GATE-B ROLLING SHUTTER (CLICKABLE IN APERTURE) ----------------- */}
+      {/* ----------------- 3. GATE-B ROLLING SHUTTER (FLUSH IN APERTURE) ----------------- */}
       <group
-        position={[-4.5, 0, -7.1]}
+        position={[-4.5, 0, -7.0]}
         onClick={(e) => {
           e.stopPropagation();
           onObjectClick({
@@ -933,46 +888,46 @@ function RealisticRoomEnvironment({
             category: "Point of Forced Entry",
             description: "Corrugated steel rolling shutter. Pried from bottom center clasp with 18-inch crowbar. Lifted ~0.95m clearance off concrete apron.",
             photoRef: "01_tampered_rear_shutter.jpg",
-            focusPos: [-4.5, 1.2, -7.1],
+            focusPos: [-4.5, 1.2, -7.0],
           });
         }}
         onPointerOver={() => (document.body.style.cursor = "pointer")}
         onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         {/* Steel Guide Posts framing the doorway */}
-        <mesh position={[-1.5, 1.5, 0]}>
-          <boxGeometry args={[0.2, 3.0, 0.2]} />
+        <mesh position={[-1.25, 1.35, 0]}>
+          <boxGeometry args={[0.15, 2.7, 0.18]} />
           <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.3} />
         </mesh>
-        <mesh position={[1.5, 1.5, 0]}>
-          <boxGeometry args={[0.2, 3.0, 0.2]} />
+        <mesh position={[1.25, 1.35, 0]}>
+          <boxGeometry args={[0.15, 2.7, 0.18]} />
           <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.3} />
         </mesh>
-        {/* Housing Header Drum Box */}
-        <mesh position={[0, 3.05, 0]}>
-          <boxGeometry args={[3.2, 0.35, 0.35]} />
-          <meshStandardMaterial color="#64748b" metalness={0.7} />
+        {/* Housing Header Box */}
+        <mesh position={[0, 2.7, 0]}>
+          <boxGeometry args={[2.6, 0.25, 0.3]} />
+          <meshStandardMaterial color="#475569" metalness={0.7} />
         </mesh>
 
         {/* Dynamic Corrugated Steel Slats (Raises with shutterHeight) */}
-        <mesh position={[0, 1.5 + shutterHeight / 2, 0]}>
-          <boxGeometry args={[2.85, Math.max(0.1, 2.9 - shutterHeight), 0.08]} />
+        <mesh position={[0, 1.35 + shutterHeight / 2, 0]}>
+          <boxGeometry args={[2.35, Math.max(0.1, 2.7 - shutterHeight), 0.06]} />
           <meshStandardMaterial
-            color={selectedObject === "Gate-B Rolling Shutter" ? "#fbbf24" : shutterHeight > 0.2 ? "#ef4444" : "#cbd5e1"}
-            metalness={0.8}
-            roughness={0.35}
+            color={selectedObject === "Gate-B Rolling Shutter" ? "#fbbf24" : shutterHeight > 0.2 ? "#ef4444" : "#94a3b8"}
+            metalness={0.7}
+            roughness={0.4}
           />
         </mesh>
 
         {/* Sheared Padlock on Exterior Alley Apron */}
         <mesh position={[0, 0.08, -0.35]}>
-          <boxGeometry args={[0.2, 0.12, 0.15]} />
+          <boxGeometry args={[0.18, 0.1, 0.12]} />
           <meshStandardMaterial color="#d97706" metalness={0.9} roughness={0.2} />
         </mesh>
 
         {/* Tamper Switch LED Beacon */}
-        <mesh position={[0, 3.3, -0.2]}>
-          <sphereGeometry args={[0.1, 16, 16]} />
+        <mesh position={[0, 2.85, -0.18]}>
+          <sphereGeometry args={[0.08, 16, 16]} />
           <meshStandardMaterial
             color={sensorStatus.includes("ALARM") || sensorStatus.includes("BREACH") ? "#ef4444" : "#10b981"}
             emissive={sensorStatus.includes("ALARM") || sensorStatus.includes("BREACH") ? "#ef4444" : "#10b981"}

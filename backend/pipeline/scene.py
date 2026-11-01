@@ -29,8 +29,13 @@ rotation={[0, 0, Math.PI/2.2]}). Scattered items should be several small
 meshes at varied positions/rotations, not one placeholder box. Use distinct
 colors per object type so they read clearly against the walls/floor.
 
+CRITICAL ARCHITECTURAL RULES (ENFORCED FOR ACCURACY ON FIRST GENERATION):
+1. MANDATORY 4-WALL ENCLOSURE: You MUST always generate all 4 boundary walls (North, South, East, West) using consistent height (3.0m - 3.5m) and matching architectural materials. Never leave the camera-facing 4th side empty.
+2. PROCEDURAL APERTURE SUBDIVISION: If any wall has an entry portal, door, rolling shutter, or window, you MUST NOT draw a solid continuous wall box across it. You must slice that wall into separate geometric sections: Left Wall Segment, Open Doorway Aperture (with door/shutter mesh inside the gap), Overhead Header Lintel, and Right Wall Segment.
+3. NO CLIPPING / ALIGNMENT: Doors and entrances must not collide with interior counters or racks. Maintain clear traversable aisles (>1.2m).
+
 Output ONLY the JSX for the scene contents (what goes inside
-<Canvas>...</Canvas>), no explanation, no markdown fences. Up to 100 lines.
+<Canvas>...</Canvas>), no explanation, no markdown fences. Up to 120 lines.
 Use realistic proportions from the measurements."""
 
 
