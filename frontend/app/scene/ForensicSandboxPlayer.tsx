@@ -60,23 +60,69 @@ const CAMERA_PRESETS: Record<string, { pos: [number, number, number]; target: [n
   suspect_pov: { pos: [-4.2, 1.7, -4.0], target: [-2.0, 1.2, -2.0], label: "🚶 Suspect POV" },
 };
 
-function SmoothCameraController({ preset }: { preset: string }) {
+function SmoothCameraController({
+  preset,
+  focusTarget,
+  manualZoom,
+}: {
+  preset: string;
+  focusTarget: [number, number, number] | null;
+  manualZoom: { id: number; delta: number };
+}) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const targetPos = useRef(new THREE.Vector3(12, 11, 12));
   const targetLook = useRef(new THREE.Vector3(0, 1, 0));
+  const isTransitioning = useRef(true);
 
+  // When camera preset changes
   useEffect(() => {
     const config = CAMERA_PRESETS[preset] || CAMERA_PRESETS["overview"];
     targetPos.current.set(...config.pos);
     targetLook.current.set(...config.target);
+    isTransitioning.current = true;
   }, [preset]);
 
-  useFrame(() => {
-    camera.position.lerp(targetPos.current, 0.05);
-    if (controlsRef.current) {
-      controlsRef.current.target.lerp(targetLook.current, 0.05);
+  // When user clicks a specific 3D object to focus
+  useEffect(() => {
+    if (focusTarget && controlsRef.current) {
+      targetLook.current.set(...focusTarget);
+      targetPos.current.set(
+        focusTarget[0] + (focusTarget[0] > 0 ? -3.2 : 3.2),
+        focusTarget[1] + 2.0,
+        focusTarget[2] + 3.2
+      );
+      isTransitioning.current = true;
+    }
+  }, [focusTarget]);
+
+  // When user clicks on-screen Zoom In / Zoom Out buttons
+  useEffect(() => {
+    if (manualZoom.id > 0 && controlsRef.current) {
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      camera.position.addScaledVector(dir, manualZoom.delta * 2.5);
       controlsRef.current.update();
+      isTransitioning.current = false;
+    }
+  }, [manualZoom, camera]);
+
+  useFrame(() => {
+    if (!isTransitioning.current) return;
+
+    camera.position.lerp(targetPos.current, 0.08);
+    if (controlsRef.current) {
+      controlsRef.current.target.lerp(targetLook.current, 0.08);
+      controlsRef.current.update();
+    }
+
+    // Stop lerp once arrived within 5cm to yield 100% control to user mouse/touch
+    if (
+      camera.position.distanceTo(targetPos.current) < 0.05 &&
+      controlsRef.current &&
+      controlsRef.current.target.distanceTo(targetLook.current) < 0.05
+    ) {
+      isTransitioning.current = false;
     }
   });
 
@@ -84,9 +130,21 @@ function SmoothCameraController({ preset }: { preset: string }) {
     <OrbitControls
       ref={controlsRef}
       makeDefault
-      maxPolarAngle={Math.PI / 2.05}
-      minDistance={1.5}
-      maxDistance={35}
+      enableDamping={true}
+      dampingFactor={0.08}
+      enableRotate={true}
+      enableZoom={true}
+      enablePan={true}
+      rotateSpeed={1.0}
+      zoomSpeed={1.4}
+      panSpeed={1.0}
+      minDistance={0.5}
+      maxDistance={50}
+      maxPolarAngle={Math.PI / 2.02}
+      onStart={() => {
+        // Immediate user takeover on mouse rotate/pan/zoom
+        isTransitioning.current = false;
+      }}
     />
   );
 }
@@ -101,7 +159,7 @@ function RealisticRoomEnvironment({
   showGuardSightline,
 }: {
   frame: any;
-  onObjectClick: (obj: { name: string; category: string; description: string; photoRef?: string }) => void;
+  onObjectClick: (obj: { name: string; category: string; description: string; photoRef?: string; focusPos?: [number, number, number] }) => void;
   selectedObject: string | null;
   showGuardSightline: boolean;
 }) {
@@ -165,8 +223,11 @@ function RealisticRoomEnvironment({
             category: "Point of Forced Entry",
             description: "Corrugated steel rolling shutter. Pried from bottom center clasp with 18-inch crowbar. Lifted ~3.0 ft off concrete apron.",
             photoRef: "01_tampered_rear_shutter.jpg",
+            focusPos: [-4.5, 1.2, -6.9],
           });
         }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         {/* Steel Guide Posts */}
         <mesh position={[-1.6, 1.6, 0]}>
@@ -221,8 +282,11 @@ function RealisticRoomEnvironment({
             category: "Electronic Surveillance Exhibit",
             description: "High-definition monochrome IR alleyway camera. Timestamp overlay had +5m 12s uncalibrated DVR clock drift.",
             photoRef: "03_cctv_alleyway_log.txt",
+            focusPos: [-6.5, 3.4, -6.9],
           });
         }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         <mesh>
           <boxGeometry args={[0.35, 0.35, 0.8]} />
@@ -274,8 +338,11 @@ function RealisticRoomEnvironment({
             category: "Primary Target of Theft",
             description: "Glass-front lockable medicine cabinet. 120 units Alprazolam & Ketamine stolen. Cabinet pulled and toppled onto floor at 02:24 AM.",
             photoRef: "02_toppled_narcotics_cabinet.jpg",
+            focusPos: [3.8, 1.0, -2.5],
           });
         }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         {/* Steel Vault Cage Wireframe */}
         <mesh position={[0, 1.6, -1.8]}>
@@ -318,8 +385,11 @@ function RealisticRoomEnvironment({
             category: "Secondary Target of Theft",
             description: "Wooden retail counter desk. Cash register pried open; cash float stolen. Crowbar slipped and dropped on floor beside till.",
             photoRef: "04_cash_drawer_and_counter.jpg",
+            focusPos: [2.2, 0.9, 3.8],
           });
         }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         {/* Wooden Counter L-Desk */}
         <mesh position={[0, 0.55, 0]}>
@@ -351,8 +421,11 @@ function RealisticRoomEnvironment({
             category: "Physical Evidence Exhibit",
             description: "18-inch rusted iron crowbar with blue paint scrapings, and a single blue nitrile surgical glove discarded on concrete floor.",
             photoRef: "03_discarded_crowbar_and_glove.jpg",
+            focusPos: [-1.2, 0.1, -4.8],
           });
         }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         {/* Classic Yellow Forensic A-Frame Tent */}
         <mesh position={[0, 0.15, 0]} rotation={[0, Math.PI / 4, 0]}>
@@ -381,8 +454,11 @@ function RealisticRoomEnvironment({
             category: "Witness Observation Post",
             description: "Security guard seated drinking tea at 02:15 AM. Brick alley corner blocks line-of-sight to the shutter clasp, but metallic screeches were clearly audible.",
             photoRef: "04_witness_statement_sundaram.txt",
+            focusPos: [-8.5, 1.2, -5.5],
           });
         }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
       >
         {/* Guard Booth Shelter */}
         <mesh position={[0, 1.2, 0]}>
@@ -471,12 +547,17 @@ export default function ForensicSandboxPlayer({
   const [cameraPreset, setCameraPreset] = useState("overview");
   const [showGuardSightline, setShowGuardSightline] = useState(false);
 
+  // Interactive Camera & Zoom Controls
+  const [manualZoomTrigger, setManualZoomTrigger] = useState<{ id: number; delta: number }>({ id: 0, delta: 0 });
+  const [cameraFocusTarget, setCameraFocusTarget] = useState<[number, number, number] | null>(null);
+
   // Inspector Popover for clicked 3D objects
   const [inspectedObject, setInspectedObject] = useState<{
     name: string;
     category: string;
     description: string;
     photoRef?: string;
+    focusPos?: [number, number, number];
   } | null>(null);
 
   // Custom Scenario Modal & Socratic Interview States
@@ -513,6 +594,7 @@ export default function ForensicSandboxPlayer({
     setCurrentFrameIdx(0);
     setIsPlaying(false);
     setInspectedObject(null);
+    setCameraFocusTarget(null);
   };
 
   // Step 1: Submit hypothesis to generate Socratic Interview
@@ -691,20 +773,72 @@ export default function ForensicSandboxPlayer({
       {/* ----------------- 3D CANVAS + TACTICAL INSPECTION HUD ----------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[520px]">
         {/* Interactive 3D Canvas */}
-        <div className="lg:col-span-2 relative bg-[#090a0f] h-full cursor-grab active:cursor-grabbing">
+        <div className="lg:col-span-2 relative bg-[#090a0f] h-full cursor-grab active:cursor-grabbing select-none">
           <Canvas camera={{ position: [12, 11, 12], fov: 46 }} style={{ width: "100%", height: "100%" }}>
-            <SmoothCameraController preset={cameraPreset} />
+            <SmoothCameraController
+              preset={cameraPreset}
+              focusTarget={cameraFocusTarget}
+              manualZoom={manualZoomTrigger}
+            />
             <RealisticRoomEnvironment
               frame={currentFrame}
-              onObjectClick={(obj) => setInspectedObject(obj)}
+              onObjectClick={(obj) => {
+                setInspectedObject(obj);
+                if (obj.focusPos) setCameraFocusTarget(obj.focusPos);
+              }}
               selectedObject={inspectedObject?.name || null}
               showGuardSightline={showGuardSightline}
             />
           </Canvas>
 
-          {/* 3D Click-To-Inspect Prompt */}
-          <div className="absolute top-3 left-3 bg-zinc-950/80 backdrop-blur border border-zinc-800 rounded px-2.5 py-1 text-[10px] text-zinc-400 font-mono shadow">
-            💡 Click any object in 3D to inspect forensic evidence
+          {/* Top-Left: Click-to-inspect helper */}
+          <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pointer-events-none">
+            <div className="bg-zinc-950/85 backdrop-blur border border-zinc-800 rounded-lg px-2.5 py-1 text-[10px] text-zinc-300 font-mono shadow flex items-center gap-1.5">
+              <span className="text-amber-400">💡</span>
+              <span>Click any object in 3D to focus & inspect forensic exhibit</span>
+            </div>
+          </div>
+
+          {/* Bottom-Right: Interactive Zoom & Orbit Control Pad */}
+          <div className="absolute bottom-3 right-3 flex items-center gap-1.5 z-20 bg-zinc-950/90 backdrop-blur border border-zinc-800 rounded-lg p-1 shadow-2xl">
+            <button
+              onClick={() => setManualZoomTrigger({ id: Date.now(), delta: 1 })}
+              className="p-1.5 px-2.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs font-bold transition flex items-center gap-1.5 active:scale-95 border border-zinc-800/60"
+              title="Zoom In (Scroll Up)"
+            >
+              <span className="text-sm font-extrabold">+</span>
+              <span>Zoom In</span>
+            </button>
+            <button
+              onClick={() => setManualZoomTrigger({ id: Date.now(), delta: -1 })}
+              className="p-1.5 px-2.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs font-bold transition flex items-center gap-1.5 active:scale-95 border border-zinc-800/60"
+              title="Zoom Out (Scroll Down)"
+            >
+              <span className="text-sm font-extrabold">-</span>
+              <span>Zoom Out</span>
+            </button>
+            <button
+              onClick={() => {
+                setCameraPreset("overview");
+                setCameraFocusTarget(null);
+              }}
+              className="p-1.5 px-2.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow active:scale-95"
+              title="Reset 360° Orbit View"
+            >
+              <span>↻</span>
+              <span>Reset 360°</span>
+            </button>
+          </div>
+
+          {/* Bottom-Left: Interactive Controls Legend */}
+          <div className="absolute bottom-3 left-3 hidden md:flex items-center gap-2 bg-zinc-950/90 backdrop-blur border border-zinc-800 rounded-lg px-3 py-1.5 text-[11px] text-zinc-300 font-mono shadow-2xl z-10 pointer-events-none">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-emerald-400 font-bold">Interactive:</span>
+            <span>Left-Drag: Rotate 360°</span>
+            <span className="text-zinc-600">|</span>
+            <span>Right-Drag: Pan</span>
+            <span className="text-zinc-600">|</span>
+            <span>Scroll: Zoom In/Out</span>
           </div>
 
           {/* Conflict Warning Flare */}

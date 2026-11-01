@@ -525,3 +525,4 @@ def get_case_sandbox_scenarios(case_id: str, force_recompute: bool = False) -> D
         "total_scenarios": len(top3) + len(custom_scenarios),
         "cached": True,
     }
+
