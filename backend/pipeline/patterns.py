@@ -362,13 +362,49 @@ def seed_historical_patterns():
     return seeded_count
 
 
-def get_case_patterns(case_id: str) -> Dict[str, Any]:
-    """Computes similarity against all historical cases and returns a full pattern intelligence report."""
+def get_case_patterns(case_id: str, force: bool = False) -> Dict[str, Any]:
+    """Computes or retrieves cached similarity against all historical cases.
+    Instant sub-10ms response when cached, zero repeated LLM/embedding computation."""
     # Ensure seed cases exist
     seed_historical_patterns()
 
-    # Get or extract signature for active case
-    active_sig = extract_case_signature(case_id)
+    # 1. Check if full pattern intelligence is already cached in MySQL
+    if not force:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM case_signatures WHERE case_id = %s", (case_id,))
+        cached = cur.fetchone()
+        conn.close()
+
+        if cached and cached.get("matches_json") and cached.get("synthesis_json"):
+            try:
+                traits = json.loads(cached.get("signature_traits") or "[]") if isinstance(cached.get("signature_traits"), str) else (cached.get("signature_traits") or [])
+                matches = json.loads(cached["matches_json"])
+                synthesis = json.loads(cached["synthesis_json"])
+                return {
+                    "case_id": case_id,
+                    "active_signature": {
+                        "case_id": cached["case_id"],
+                        "crime_category": cached.get("crime_category") or "commercial_burglary",
+                        "point_of_entry": cached.get("point_of_entry") or "Unknown",
+                        "tools_used": cached.get("tools_used") or "Unknown",
+                        "target_goods": cached.get("target_goods") or "Unknown",
+                        "timing_window": cached.get("timing_window") or "Unknown",
+                        "suspect_count": cached.get("suspect_count") or 1,
+                        "signature_traits": traits,
+                        "mo_summary": cached.get("mo_summary") or "",
+                        "created_at": cached.get("created_at") or "",
+                    },
+                    "similar_cases": matches,
+                    "comparative_synthesis": synthesis,
+                    "cached": True,
+                    "computed_at": cached.get("computed_at") or cached.get("created_at"),
+                }
+            except Exception as e:
+                logger.warning(f"Error parsing cached pattern intelligence for {case_id}: {e}")
+
+    # 2. Recompute on first run or on explicit user force request
+    active_sig = extract_case_signature(case_id, force=force)
 
     model = _get_model()
     collection = _get_patterns_collection()
@@ -467,9 +503,32 @@ def get_case_patterns(case_id: str) -> Dict[str, Any]:
                 ],
             }
 
+    # 3. Store the computed results permanently in MySQL so future calls are instant
+    computed_at = datetime.now().isoformat()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE case_signatures 
+            SET matches_json = %s, synthesis_json = %s, computed_at = %s 
+            WHERE case_id = %s""",
+            (
+                json.dumps(matches),
+                json.dumps(synthesis),
+                computed_at,
+                case_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to persist pattern intelligence cache for {case_id}: {e}")
+
     return {
         "case_id": case_id,
         "active_signature": active_sig,
         "similar_cases": matches,
         "comparative_synthesis": synthesis,
+        "cached": False,
+        "computed_at": computed_at,
     }

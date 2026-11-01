@@ -1510,6 +1510,11 @@ function PatternsTab({ caseId }: { caseId: string }) {
             <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
               Modus Operandi Vector Engine
             </span>
+            {patternsData?.cached && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 flex items-center gap-1">
+                <span>⚡</span> Cached (Instant Fetch)
+              </span>
+            )}
           </div>
           <p className="text-xs text-zinc-400 mt-1">
             Dense similarity matching over crime scene signatures, entry mechanics, toolmark striations, and serial syndicate tradecraft.

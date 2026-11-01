@@ -166,6 +166,9 @@ SCHEMA_STATEMENTS = [
         suspect_count INT DEFAULT 1,
         signature_traits TEXT,
         mo_summary TEXT,
+        synthesis_json LONGTEXT,
+        matches_json LONGTEXT,
+        computed_at VARCHAR(64),
         created_at VARCHAR(64)
     )""",
 ]

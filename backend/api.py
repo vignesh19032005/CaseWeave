@@ -628,12 +628,12 @@ def get_case_patterns_endpoint(case_id: str, user: dict = Depends(auth.get_curre
 @app.post("/cases/{case_id}/patterns/extract")
 def extract_case_patterns_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
     auth.enforce_permission(user, "upload_evidence")
-    from pipeline.patterns import extract_case_signature
+    from pipeline.patterns import get_case_patterns
     try:
-        sig = extract_case_signature(case_id, force=True)
-        return {"status": "extracted", "signature": sig}
+        report = get_case_patterns(case_id, force=True)
+        return {"status": "extracted", "report": report}
     except Exception as e:
-        raise HTTPException(500, f"Error extracting pattern signature: {str(e)}")
+        raise HTTPException(500, f"Error recomputing pattern intelligence: {str(e)}")
 
 
 @app.post("/cases/patterns/seed")
