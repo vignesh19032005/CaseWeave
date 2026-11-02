@@ -569,3 +569,15 @@ def test_regression_last_hop_does_not_clip_an_obstacle_corner():
     steps, actors = random_steps(rng, lay)
     val = sg.validate_plan(sg.plan_scenario(steps, lay, actors), lay)
     assert not (blocked(val) and not [v for v in val["violations"] if v["code"] in DISCLOSED])
+
+
+def test_shelf_running_across_a_door_is_cut_back_not_left_blocking():
+    """A real model layout put a 3.5 m shelf along the wall that holds the only door into a room,
+    which made that room unreachable and sank every scenario. The shelf must be cut back and say so."""
+    src = json.loads((Path(__file__).parent / "data" / "blocked_door_source.json").read_text(encoding="utf-8"))
+    lay = sg.build_layout(src, set())
+    assert all(o["reachable"] for o in lay["openings"])
+    assert not any("not reachable from outside" in w for w in lay["warnings"])
+    shelf = next(f for f in lay["fixtures"] if f["id"] == "dispensary_shelving")
+    assert shelf["adjusted"] and any("cut back" in n for n in shelf["adjust_notes"])
+    assert any("dispensary_shelving" in w and "cut back" in w for w in lay["warnings"])

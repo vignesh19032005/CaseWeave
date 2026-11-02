@@ -254,8 +254,12 @@ def evidence_context(ev: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         lines.append("\nCONFLICTS BETWEEN SOURCES (officer review status in brackets; 'resolved' means the officer settled it):")
         for c in ev["conflicts"]:
             lines.append(f"- [{c.get('review_status') or 'unresolved'}] {clean_text(c['claim_a'], 200)} VERSUS {clean_text(c['claim_b'], 200)}")
+    from pipeline.evidence_guard import screen_lines
+    body, guard = screen_lines(lines[1:])
+    lines = [lines[0]] + body
     lines.append("</evidence_data>")
     stats = {
+        "guard": guard,
         "observations_total": len(ev["observations"]), "observations_shown": len(selected), "observations_omitted": omitted,
         "entities_total": len(ents), "entities_omitted": ent_omitted, "evidence_files": len(ev["evidence_items"]),
         "timed_observations": sum(1 for o in ev["observations"] if parse_clock(o.get("extracted_time"), o.get("time_claim"))),
@@ -421,8 +425,9 @@ def compute_time_anchors(actors: List[dict], ev: Dict[str, Any], officer_times: 
                 violations.append({"code": "anchor_order_conflict", "step": b["step"], "actor": actor["id"],
                                    "message": f"{actor['label']}: evidence times put step {b['step'] + 1} ({b['clock_text']}) before step {a['step'] + 1} ({a['clock_text']}), but the scenario has them the other way round"})
             elif real + 60 < model:
+                apart = (f"{real / 60:.0f} min apart" if real >= 0 else f"in the opposite order by about {abs(real) / 60:.0f} min ({a['clock_text']} then {b['clock_text']})")
                 violations.append({"code": "anchor_time_conflict", "step": b["step"], "actor": actor["id"],
-                                   "message": f"{actor['label']}: evidence puts steps {a['step'] + 1} and {b['step'] + 1} {max(real, 0) / 60:.0f} min apart, but the movement between them needs at least {model / 60:.1f} min"})
+                                   "message": f"{actor['label']}: evidence puts steps {a['step'] + 1} and {b['step'] + 1} {apart}, but the movement between them needs at least {model / 60:.1f} min"})
             elif real - model > 60:
                 notes.append({"actor": actor["id"], "from_step": a["step"], "to_step": b["step"], "unmodelled_s": int(real - model),
                               "message": f"{actor['label']}: {(real - model) / 60:.0f} min between steps {a['step'] + 1} and {b['step'] + 1} are not accounted for by the movement shown"})

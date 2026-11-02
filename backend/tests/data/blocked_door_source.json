@@ -1,0 +1,394 @@
+{
+ "connections": [
+  {
+   "basis": "inferred",
+   "evidence_refs": [],
+   "id": "billing_to_stockroom_door",
+   "kind": "door",
+   "label": "Internal door billing area to stockroom",
+   "position_frac": 0.5,
+   "room_a": "billing_counter_area",
+   "room_b": "stockroom",
+   "state": "unknown",
+   "state_note": "Internal route inferred from motion sequence from narcotics zone to billing counter area; door condition not stated",
+   "width_m": 1.0
+  },
+  {
+   "basis": "inferred",
+   "evidence_refs": [],
+   "id": "stockroom_to_dispensary_door",
+   "kind": "door",
+   "label": "Internal door stockroom to secured dispensary",
+   "position_frac": 0.5,
+   "room_a": "stockroom",
+   "room_b": "secured_dispensary",
+   "state": "unknown",
+   "state_note": "Secured internal dispensary accessed from stockroom; door condition not stated",
+   "width_m": 1.0
+  }
+ ],
+ "entry_points": [
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-1bbb4f2f",
+    "OBS-48edfbe5"
+   ],
+   "id": "front_glass_entrance",
+   "label": "Front glass entrance",
+   "position_frac": 0.5,
+   "room": "billing_counter_area",
+   "state": "intact",
+   "state_note": "Front glass entrance was intact and secured with internal electric shutter locks",
+   "wall": "south",
+   "width_m": 1.8
+  },
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-ce16a65b",
+    "OBS-8bbc9de0",
+    "OBS-08cf91c5",
+    "OBS-c8a1d99c"
+   ],
+   "id": "rear_shutter_gate_b",
+   "label": "Rear service alleyway shutter Gate-B",
+   "position_frac": 0.5,
+   "room": "stockroom",
+   "state": "forced",
+   "state_note": "Forced breach: padlock compromised by torsion, shutter lifted approximately 3 feet, tamper and forced_breach alarms recorded",
+   "wall": "north",
+   "width_m": 2.5
+  }
+ ],
+ "fixtures": [
+  {
+   "basis": "stated",
+   "category": "counter",
+   "color_hex": "#8a6d4b",
+   "evidence_refs": [
+    "OBS-106506cd",
+    "OBS-66ef22ee"
+   ],
+   "footprint_m": [
+    3.0,
+    0.8
+   ],
+   "height_m": 1.1,
+   "id": "glass_billing_counter",
+   "label": "Glass-topped billing counter",
+   "position_frac": [
+    0.5,
+    0.35
+   ],
+   "room": "billing_counter_area"
+  },
+  {
+   "basis": "stated",
+   "category": "other",
+   "color_hex": "#7a5a36",
+   "evidence_refs": [
+    "OBS-7d63fcdc",
+    "OBS-c660c99c"
+   ],
+   "footprint_m": [
+    0.6,
+    0.4
+   ],
+   "height_m": 0.2,
+   "id": "cash_drawer_on_counter",
+   "label": "Wooden cash drawer tray on counter",
+   "position_frac": [
+    0.45,
+    0.35
+   ],
+   "room": "billing_counter_area"
+  },
+  {
+   "basis": "stated",
+   "category": "shelf",
+   "color_hex": "#c8d8d8",
+   "evidence_refs": [
+    "OBS-0e92c164",
+    "OBS-45956842"
+   ],
+   "footprint_m": [
+    2.0,
+    0.5
+   ],
+   "height_m": 1.8,
+   "id": "glass_display_shelf_2",
+   "label": "Glass display shelf #2",
+   "position_frac": [
+    0.15,
+    0.5
+   ],
+   "room": "billing_counter_area"
+  },
+  {
+   "basis": "stated",
+   "category": "shelf",
+   "color_hex": "#808080",
+   "evidence_refs": [
+    "OBS-d5b761f5",
+    "OBS-06fa6d75"
+   ],
+   "footprint_m": [
+    0.6,
+    4.0
+   ],
+   "height_m": 2.0,
+   "id": "stockroom_shelving",
+   "label": "Metal shelving units with cardboard boxes",
+   "position_frac": [
+    0.15,
+    0.5
+   ],
+   "room": "stockroom"
+  },
+  {
+   "basis": "stated",
+   "category": "safe",
+   "color_hex": "#2e6b4a",
+   "evidence_refs": [
+    "OBS-3caf7f0d",
+    "OBS-2eb2edb7",
+    "OBS-bf441f53"
+   ],
+   "footprint_m": [
+    1.4,
+    0.6
+   ],
+   "height_m": 1.8,
+   "id": "narcotics_locker_sec40",
+   "label": "Godrej SEC-40 dual-door steel locker / narcotics cabinet",
+   "position_frac": [
+    0.5,
+    0.85
+   ],
+   "room": "secured_dispensary"
+  },
+  {
+   "basis": "stated",
+   "category": "shelf",
+   "color_hex": "#808080",
+   "evidence_refs": [
+    "OBS-13655865",
+    "OBS-0f80106a"
+   ],
+   "footprint_m": [
+    0.5,
+    3.5
+   ],
+   "height_m": 2.0,
+   "id": "dispensary_shelving",
+   "label": "Metal shelving units along walls",
+   "position_frac": [
+    0.1,
+    0.5
+   ],
+   "room": "secured_dispensary"
+  }
+ ],
+ "key_locations": [
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-55d6a544",
+    "OBS-d838b3d0",
+    "OBS-c7042921"
+   ],
+   "id": "rear_shutter_breach_point",
+   "label": "Rear shutter forced entry point",
+   "position_frac": [
+    0.5,
+    0.95
+   ],
+   "room": "stockroom",
+   "significance": "Intruder pried the Gate-B centre lock clasp, lifted the shutter and ducked inside, leaving metal filings at the threshold."
+  },
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-3caf7f0d",
+    "OBS-c84c7308",
+    "OBS-43374557"
+   ],
+   "id": "narcotics_locker_attack",
+   "label": "Narcotics locker pried open",
+   "position_frac": [
+    0.5,
+    0.85
+   ],
+   "room": "secured_dispensary",
+   "significance": "The Godrej SEC-40 locker showed severe mechanical deformation and its dial was sheared off; Schedule H1 drugs were stolen from it."
+  },
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-0ba53054",
+    "OBS-1a77c4ba"
+   ],
+   "id": "cash_till_ransacked",
+   "label": "Counter cash till ransacked",
+   "position_frac": [
+    0.45,
+    0.35
+   ],
+   "room": "billing_counter_area",
+   "significance": "Counter cash till was ransacked and approximately INR 42,500 from the evening register was missing."
+  },
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-f6d5903e",
+    "OBS-00191754",
+    "OBS-bc57c2f2",
+    "OBS-ea752d5f"
+   ],
+   "id": "crowbar_glove_recovery",
+   "label": "Crowbar and blue glove recovered, stockroom aisle 3",
+   "position_frac": [
+    0.5,
+    0.5
+   ],
+   "room": "stockroom",
+   "significance": "An 18-inch hex-shank iron crowbar and a left-hand blue nitrile glove were recovered from the stockroom aisle floor."
+  },
+  {
+   "basis": "stated",
+   "evidence_refs": [
+    "OBS-0e92c164"
+   ],
+   "id": "fingerprint_shelf_location",
+   "label": "Latent fingerprint on glass display shelf #2",
+   "position_frac": [
+    0.15,
+    0.5
+   ],
+   "room": "billing_counter_area",
+   "significance": "A latent partial fingerprint was lifted from glass display shelf #2 and forwarded to the State Fingerprint Bureau."
+  }
+ ],
+ "notes": "The evidence states the ground-floor pharmacy layout in functional zones, the forced rear Gate-B entry, the pried narcotics locker and the ransacked billing till, but gives no room dimensions or exact internal door positions. All dimensions, room sizes, internal door placements and outdoor distances are therefore assumed or inferred to attach those stated zones together.",
+ "observers": [
+  {
+   "basis": "stated",
+   "distance_m": 6,
+   "evidence_refs": [
+    "OBS-185104d6",
+    "OBS-a8ce7935"
+   ],
+   "facing_toward": "rear_shutter_gate_b",
+   "fov_deg": 90,
+   "id": "cam_alley_04",
+   "kind": "camera",
+   "label": "CAM-ALLEY-04 alleyway camera",
+   "lateral_m": 2,
+   "near": "rear_shutter_gate_b",
+   "range_m": 15,
+   "room": "outside"
+  },
+  {
+   "basis": "inferred",
+   "distance_m": 20,
+   "evidence_refs": [
+    "OBS-feb73ca7",
+    "OBS-602899ba",
+    "OBS-9bc170ea"
+   ],
+   "facing_toward": "rear_shutter_gate_b",
+   "fov_deg": 120,
+   "id": "witness_person8_kiosk",
+   "kind": "witness",
+   "label": "K. Sundaram night guard at main security kiosk",
+   "lateral_m": 5,
+   "near": "rear_shutter_gate_b",
+   "range_m": 30,
+   "room": "outside"
+  }
+ ],
+ "outdoor_objects": [
+  {
+   "basis": "inferred",
+   "distance_m": 3,
+   "evidence_refs": [
+    "OBS-d79d6bde"
+   ],
+   "footprint_m": [
+    1.8,
+    0.7
+   ],
+   "height_m": 1.1,
+   "id": "parked_motorcycles_rear",
+   "kind": "object",
+   "label": "Parked motorcycles left of rear shutter",
+   "lateral_m": -3,
+   "near": "rear_shutter_gate_b"
+  }
+ ],
+ "rooms": [
+  {
+   "basis": "stated",
+   "dimensions_basis": "assumed",
+   "evidence_refs": [
+    "OBS-30bd0630",
+    "OBS-a652d930",
+    "OBS-0ba53054"
+   ],
+   "height_m": 3.5,
+   "id": "billing_counter_area",
+   "label": "Billing counter / front pharmacy area",
+   "length_m": 6,
+   "level": 0,
+   "observed": true,
+   "width_m": 8
+  },
+  {
+   "attach": {
+    "align_frac": 0.5,
+    "to": "billing_counter_area",
+    "wall": "north"
+   },
+   "basis": "stated",
+   "dimensions_basis": "assumed",
+   "evidence_refs": [
+    "OBS-bb7c495d",
+    "OBS-f6d5903e",
+    "OBS-43374557"
+   ],
+   "height_m": 3.5,
+   "id": "stockroom",
+   "label": "Stockroom",
+   "length_m": 5,
+   "level": 0,
+   "observed": true,
+   "width_m": 8
+  },
+  {
+   "attach": {
+    "align_frac": 0.5,
+    "to": "stockroom",
+    "wall": "east"
+   },
+   "basis": "stated",
+   "dimensions_basis": "assumed",
+   "evidence_refs": [
+    "OBS-3caf7f0d",
+    "OBS-1170d639",
+    "OBS-7af44178"
+   ],
+   "height_m": 3.5,
+   "id": "secured_dispensary",
+   "label": "Secured internal dispensary (Schedule H1 / narcotics storage)",
+   "length_m": 5,
+   "level": 0,
+   "observed": true,
+   "width_m": 4
+  }
+ ],
+ "scene_assessment": {
+  "physical_scene_supported": true,
+  "reason": "The evidence identifies a ground-floor pharmacy in Kilpauk with a rear Gate-B shutter, stockroom, secured narcotics dispensary and front billing counter area where entry and thefts occurred."
+ }
+}

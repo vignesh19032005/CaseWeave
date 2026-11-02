@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import type { Basis, EditOp, EvidenceEntry, InspectedItem, Layout, Scenario } from "./sandboxTypes";
+import React, { useEffect, useState } from "react";
+import { api } from "../lib/api";
+import type { Basis, EditOp, EvidenceEntry, InspectedItem, Layout, PhotoLinks, Scenario } from "./sandboxTypes";
 
 export const BASIS_STYLE: Record<Basis | "derived", string> = {
   stated: "bg-emerald-950 text-emerald-300 border-emerald-800",
@@ -304,6 +305,81 @@ export function LayoutEditor({ layout, item, pending, onQueue, onClearPending, o
             <button onClick={onClearPending} className="px-2 py-1 rounded bg-zinc-800 text-[11px]">Discard</button>
           </div>
         </div>
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- photographs linked to scene objects
+
+function PhotoCard({ caseId, photo, selectedId, showAll }: { caseId: string; photo: NonNullable<PhotoLinks["content"]>["photos"][number]; selectedId: string | null; showAll: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let made: string | null = null;
+    let cancelled = false;
+    api.evidenceFileUrl(caseId, photo.evidence_id).then((u: string) => {
+      if (cancelled) URL.revokeObjectURL(u);
+      else { made = u; setUrl(u); }
+    }).catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; if (made) URL.revokeObjectURL(made); };
+  }, [caseId, photo.evidence_id]);
+  const shown = photo.matches.filter((m) => showAll || m.node_id === selectedId);
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] text-zinc-500 font-mono truncate">{photo.filename}</div>
+      <div className="relative border border-zinc-800 rounded overflow-hidden bg-black" data-testid="photo-card">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={photo.filename} className="w-full block" />
+        ) : (
+          <div className="h-24 flex items-center justify-center text-[10px] text-zinc-500">{failed ? "photo could not be loaded" : "loading photo…"}</div>
+        )}
+        {url && shown.map((m, i) => (
+          <div
+            key={i}
+            data-testid="photo-box"
+            title={`${m.label} (detected as "${m.term}")`}
+            className={`absolute border-2 ${m.node_id === selectedId ? "border-amber-400 bg-amber-400/10" : "border-cyan-400/80"}`}
+            style={{ left: `${m.pct[0]}%`, top: `${m.pct[1]}%`, width: `${m.pct[2]}%`, height: `${m.pct[3]}%` }}
+          >
+            <span className="absolute -top-4 left-0 text-[9px] bg-black/80 text-cyan-200 px-1 rounded whitespace-nowrap max-w-[160px] truncate">{m.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function PhotoEvidence({ caseId, links, selectedId, canCreate, busy, onCreate }: {
+  caseId: string; links: PhotoLinks | null; selectedId: string | null; canCreate: boolean; busy: boolean; onCreate: () => void;
+}) {
+  const [showAll, setShowAll] = useState(true);
+  const content = links?.content ?? null;
+  const total = content ? content.photos.reduce((n, p) => n + p.matches.length, 0) : 0;
+  return (
+    <Section title="Objects found in the case photographs">
+      {!content ? (
+        <p className="text-[11px] text-zinc-500">
+          {canCreate ? "Meta's SAM 3.1 can find the scene's objects in the case photographs, so you can check each one against the photo that supports it." : "No photograph links have been made for this scene."}
+        </p>
+      ) : (
+        <>
+          <p className="text-[10px] text-zinc-500">
+            {total} possible match(es) in {content.photos.length} photograph(s), found by {content.detector}. {content.caveat}
+            {content.calls_failed > 0 ? ` ${content.calls_failed} of ${content.calls} detector calls failed, so some objects may be missing.` : ""}
+          </p>
+          {links?.stale && <p className="text-[11px] text-orange-300">The room layout has changed since these were made. Run the search again.</p>}
+          <label className="flex items-center gap-1 text-[11px] text-zinc-400"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show every match (otherwise only the selected object)</label>
+          <div className="space-y-2">
+            {content.photos.map((p) => <PhotoCard key={p.evidence_id} caseId={caseId} photo={p} selectedId={selectedId} showAll={showAll} />)}
+          </div>
+        </>
+      )}
+      {canCreate && (
+        <button disabled={busy} onClick={onCreate} className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-[11px] font-semibold">
+          {busy ? "Searching the photographs…" : content ? "Search the photographs again" : "Find objects in the photographs"}
+        </button>
       )}
     </Section>
   );

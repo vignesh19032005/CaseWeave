@@ -244,6 +244,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ops }),
     }),
+  createPhotoLinks: (caseId: string) => request(`/cases/${caseId}/sandbox/photo-links`, { method: "POST" }),
+  getPhotoLinks: (caseId: string) => request(`/cases/${caseId}/sandbox/photo-links`),
   getNarrative: (caseId: string) => request(`/cases/${caseId}/narrative`),
   downloadSandboxPdf: async (caseId: string) => {
     const token = getToken();

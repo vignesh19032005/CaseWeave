@@ -5,8 +5,8 @@ import dynamic from "next/dynamic";
 import { api, ApiError } from "../lib/api";
 import { clockAt, daylightAt, formatDuration, solve, totalDuration } from "./sandboxSolver";
 import type { CameraMode } from "./SandboxScene3D";
-import { BasisBadge, ComparisonMatrix, LayoutEditor, RefChips, Section, SceneBoundary } from "./SandboxPanels";
-import type { EditOp, InspectedItem, Layout, SandboxState, Scenario } from "./sandboxTypes";
+import { BasisBadge, ComparisonMatrix, LayoutEditor, PhotoEvidence, RefChips, Section, SceneBoundary } from "./SandboxPanels";
+import type { EditOp, InspectedItem, Layout, PhotoLinks, SandboxState, Scenario } from "./sandboxTypes";
 
 const SandboxScene3D = dynamic(() => import("./SandboxScene3D"), {
   ssr: false,
@@ -41,6 +41,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
   const [inspected, setInspected] = useState<InspectedItem | null>(null);
   const [focus, setFocus] = useState<[number, number, number] | null>(null);
   const [pending, setPending] = useState<EditOp[]>([]);
+  const [photoLinks, setPhotoLinks] = useState<PhotoLinks | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
 
   const [modal, setModal] = useState(false);
@@ -56,6 +57,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
       const s = (await api.getSandbox(caseId)) as SandboxState;
       setState(s);
       setLoadError("");
+      if (s.status === "ready") api.getPhotoLinks(caseId).then((p: PhotoLinks) => setPhotoLinks(p)).catch(() => undefined);
     } catch (e) {
       setLoadError(errMsg(e, "Could not load the scene"));
     }
@@ -70,6 +72,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
           setState(s);
           setLoadError("");
         }
+        if (s.status === "ready") api.getPhotoLinks(caseId).then((p: PhotoLinks) => { if (!cancelled) setPhotoLinks(p); }).catch(() => undefined);
       } catch (e) {
         if (!cancelled) setLoadError(errMsg(e, "Could not load the scene"));
       }
@@ -172,6 +175,11 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
   const approve = () => guarded("approve", async () => { await api.approveSandboxLayout(caseId); await load(); }, "Could not approve the layout");
   const exportJson = () => guarded("export", () => api.downloadSandboxPack(caseId), "Could not export the review pack");
   const exportPdf = () => guarded("pdf", () => api.downloadSandboxPdf(caseId), "Could not export the PDF");
+  const makePhotoLinks = () =>
+    guarded("photos", async () => {
+      await api.createPhotoLinks(caseId);
+      setPhotoLinks((await api.getPhotoLinks(caseId)) as PhotoLinks);
+    }, "Could not search the photographs");
   const applyEdits = () =>
     guarded("edit", async () => {
       await api.editSandboxLayout(caseId, pending);
@@ -317,6 +325,16 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
               ))}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {run?.generation?.provider_mode && run.generation.provider_mode !== "auto" && (
+                <span title={run.generation.provider_mode === "local_only" ? "Every AI call for this scene ran on the department's own server" : "Only Meta's models were used for this scene"} className="px-2 py-0.5 rounded border border-sky-800 bg-sky-950 text-sky-300 text-[10px]">
+                  {run.generation.provider_mode === "local_only" ? "on-premise model" : "Meta models only"}
+                </span>
+              )}
+              {run?.generation?.evidence?.guard && run.generation.evidence.guard.removed > 0 && (
+                <span title={`${run.generation.evidence.guard.findings.map((f) => f.kind).join(", ")}. ${run.generation.evidence.guard.note}`} className="px-2 py-0.5 rounded border border-amber-800 bg-amber-950 text-amber-300 text-[10px]">
+                  {run.generation.evidence.guard.removed} instruction-like text(s) removed
+                </span>
+              )}
               {redaction?.enabled && (
                 <span title={`Replaced before sending to AI: ${Object.entries(redaction.replacements).map(([k, v]) => `${v} ${k}`).join(", ") || "nothing found"}. Not covered: ${redaction.not_covered.join("; ")}`} className="px-2 py-0.5 rounded border border-emerald-800 bg-emerald-950 text-emerald-300 text-[10px]">
                   identifiers redacted
@@ -466,6 +484,8 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                       <button onClick={() => retract(scenario)} className="text-[11px] text-red-400 hover:underline">Withdraw this scenario (kept in the record)</button>
                     )}
                   </Section>
+
+                  <PhotoEvidence caseId={caseId} links={photoLinks} selectedId={inspected?.id ?? null} canCreate={canGenerate && !readOnly} busy={busy === "photos"} onCreate={makePhotoLinks} />
 
                   <ComparisonMatrix scenarios={scenarios} activeId={scenario.scenario_id} onPick={pick} overlay={overlayAll} setOverlay={setOverlayAll} />
 

@@ -33,7 +33,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from db import get_conn, append_audit_event, append_audit_event_txn, verify_audit_chain
-from llm_client import chat_json_ex, chat_vision, LLMUnavailableError
+from llm_client import chat_json_ex, chat_vision, LLMUnavailableError, provider_mode
 from pipeline import sandbox_evidence as evd
 from pipeline import sandbox_geometry as geo
 from pipeline.redaction import build_redactor, redaction_enabled
@@ -534,6 +534,7 @@ def run_generation(run_id: str, case_id: str, user: Dict[str, Any], mode: str = 
         context, stats = evd.evidence_context(ev)
         narrative = latest_narrative(case_id)
         ctx = _scenario_context(ev, narrative=(narrative or {}).get("content"))
+        meta["provider_mode"] = provider_mode()
         meta["evidence"] = {**stats, "fingerprint": evd.evidence_fingerprint(ev), "parts": evd.fingerprint_parts(ev)}
         approved_by = approved_at = None
         if mode == "scenarios_only":
@@ -1069,6 +1070,11 @@ def latest_narrative(case_id: str) -> Optional[Dict[str, Any]]:
 # Review pack
 # --------------------------------------------------------------------------
 
+def _photo_links_for_pack(case_id: str):
+    from pipeline.sandbox_photos import latest_photo_links
+    return latest_photo_links(case_id)
+
+
 def export_pack(case_id: str, user: Dict[str, Any]) -> Dict[str, Any]:
     state = get_state(case_id)
     if not state["run"] or not state["run"].get("layout"):
@@ -1100,6 +1106,8 @@ def export_pack(case_id: str, user: Dict[str, Any]) -> Dict[str, Any]:
         "redaction": meta.get("redaction"), "run": state["run"], "raw_model_calls": calls, "scenarios": state["scenarios"], "score_formula": state["score_formula"],
         "evidence_changed_since_generation": state["stale"], "evidence_change_detail": state["stale_detail"], "case_narrative": narrative,
         "audit_events": events, "audit_chain_verified": chain_ok,
+        "provider_mode": meta.get("provider_mode"), "evidence_screen": (meta.get("evidence") or {}).get("guard"),
+        "photo_links": _photo_links_for_pack(case_id),
     }
     pack["pack_hash"] = evd.canonical_hash({k: v for k, v in pack.items() if k != "exported_at"})
     _audit(case_id, user, "sandbox_pack_exported", pack["pack_hash"][:24])

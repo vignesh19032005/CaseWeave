@@ -222,6 +222,17 @@ SCHEMA_STATEMENTS = [
         created_at VARCHAR(40),
         INDEX (case_id)
     ) DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS sandbox_photo_links (
+        link_id VARCHAR(64) PRIMARY KEY,
+        case_id VARCHAR(64) NOT NULL,
+        run_id VARCHAR(64),
+        layout_hash VARCHAR(64),
+        content_json LONGTEXT,
+        content_hash VARCHAR(64),
+        created_by VARCHAR(128),
+        created_at VARCHAR(40),
+        INDEX (case_id)
+    ) DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS schema_migrations (
         name VARCHAR(80) PRIMARY KEY,
         applied_at VARCHAR(40)
@@ -347,7 +358,7 @@ def reset_db():
     for table in [
         "cases", "evidence_items", "observations", "entities", "entity_mentions",
         "relationships", "users", "timeline_events", "conflicts", "evidence_links",
-        "conflict_reviews", "sandbox_scenarios", "sandbox_runs", "case_narratives", "schema_migrations", "audit_events",
+        "conflict_reviews", "sandbox_scenarios", "sandbox_runs", "sandbox_photo_links", "case_narratives", "schema_migrations", "audit_events",
     ]:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.execute("SET FOREIGN_KEY_CHECKS=1")

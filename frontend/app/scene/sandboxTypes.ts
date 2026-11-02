@@ -297,11 +297,12 @@ export interface RunInfo {
   evidence_index?: Record<string, EvidenceEntry>;
   generation?: {
     calls?: { step: string; provider: string; model: string; prompt_hash: string; seconds: number; redacted?: boolean }[];
-    evidence?: { observations_total: number; observations_shown: number; observations_omitted: number; timed_observations: number; evidence_files: number };
+    evidence?: { guard?: { checked: boolean; removed: number; findings: { kind: string; excerpt: string }[]; note: string }; observations_total: number; observations_shown: number; observations_omitted: number; timed_observations: number; evidence_files: number };
     redaction?: { enabled: boolean; replacements: Record<string, number>; not_covered: string[] };
     vision_cues?: { enabled: boolean; images_sent: number };
     layout_reused_from?: string;
     edited_from?: string;
+    provider_mode?: "auto" | "meta_only" | "local_only";
   };
 }
 
@@ -334,3 +335,16 @@ export interface InspectedItem {
 }
 
 export type EditOp = { op: "set" | "add" | "remove"; kind: string; id?: string; fields?: Record<string, unknown> };
+
+export interface PhotoMatch { node_id: string; node_kind: string; label: string; term: string; pct: [number, number, number, number] }
+export interface PhotoLinks {
+  link_id: string | null;
+  created_by?: string;
+  created_at?: string;
+  stale?: boolean;
+  content: null | {
+    photos: { evidence_id: string; filename: string; image_width: number | null; image_height: number | null; matches: PhotoMatch[] }[];
+    terms: { node_id: string; label: string; term: string }[];
+    calls: number; calls_failed: number; detector: string; basis: string; caveat: string;
+  };
+}

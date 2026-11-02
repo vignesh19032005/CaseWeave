@@ -134,11 +134,58 @@ def _call_gemini(system: str, prompt: str, max_tokens: int, timeout: int = 60) -
     return result["candidates"][0]["content"]["parts"][0]["text"]
 
 
-PROVIDERS = [
+def _call_local(system: str, prompt: str, max_tokens: int, timeout: int = 120) -> str:
+    """A model running on this machine or on the department's own server, through any
+    OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp). Nothing leaves the premises."""
+    base = os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:11434/v1").strip().rstrip("/")
+    model = os.environ.get("LOCAL_LLM_MODEL", "").strip()
+    if not model:
+        raise LLMUnavailableError("LOCAL_LLM_MODEL not set")
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+        "temperature": 0.2,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    headers = {"Content-Type": "application/json"}
+    key = os.environ.get("LOCAL_LLM_API_KEY", "").strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    result = _post_json(f"{base}/chat/completions", headers, payload, timeout=timeout, retries=1)
+    content = (result.get("choices") or [{}])[0].get("message", {}).get("content")
+    if not content:
+        raise LLMUnavailableError("local model returned empty content")
+    return content
+
+
+_ALL_PROVIDERS = [
     ("meta", _call_meta),
     ("groq", _call_groq),
     ("gemini", _call_gemini),
+    ("local", _call_local),
 ]
+
+
+def provider_mode() -> str:
+    """auto: Meta, then the other hosted providers (the long-standing behaviour).
+    meta_only: only Meta's hosted models. local_only: only a model on this network."""
+    m = os.environ.get("LLM_PROVIDER_MODE", "auto").strip().lower()
+    return m if m in ("auto", "meta_only", "local_only") else "auto"
+
+
+def active_providers():
+    mode = provider_mode()
+    if mode == "meta_only":
+        names = {"meta"}
+    elif mode == "local_only":
+        names = {"local"}
+    else:
+        names = {"meta", "groq", "gemini"}
+    return [(n, f) for n, f in _ALL_PROVIDERS if n in names]
+
+
+PROVIDERS = [(n, f) for n, f in _ALL_PROVIDERS if n != "local"]  # kept for older callers; chat() uses active_providers()
 
 
 def _call_meta_vision(system: str, prompt: str, image_b64: str, mime_type: str, max_tokens: int) -> str:
@@ -218,7 +265,11 @@ def chat_vision(system: str, prompt: str, image_path, max_tokens: int = 2048) ->
     image_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
 
     errors = []
+    allowed = {n for n, _ in active_providers()}
     for name, fn in VISION_PROVIDERS:
+        if name not in allowed:
+            errors.append(f"{name}: not allowed in {provider_mode()} mode")
+            continue
         try:
             text = fn(system, prompt, image_b64, mime_type, max_tokens)
             return name, text
@@ -257,7 +308,7 @@ def chat(system: str, prompt: str, max_tokens: int = 2048, timeout: int | None =
     """Returns (provider_name_used, response_text). Raises LLMUnavailableError if all fail."""
     errors = []
     start = time.time()
-    for name, fn in PROVIDERS:
+    for name, fn in active_providers():
         try:
             text = fn(system, prompt, max_tokens) if timeout is None else fn(system, prompt, max_tokens, timeout)
             latency_ms = round((time.time() - start) * 1000)
@@ -290,6 +341,8 @@ def model_id(provider: str) -> str:
         return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
     if provider == "gemini":
         return os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash").strip()
+    if provider == "local":
+        return os.environ.get("LOCAL_LLM_MODEL", "local").strip()
     return provider
 
 

@@ -201,7 +201,7 @@ def delete_case(case_id: str, user: dict = Depends(auth.get_current_user)):
     for table in [
         "evidence_items", "observations", "entities", "entity_mentions", "relationships",
         "timeline_events", "conflicts", "evidence_links", "conflict_reviews",
-        "sandbox_scenarios", "sandbox_runs", "case_narratives", "cases",
+        "sandbox_scenarios", "sandbox_runs", "sandbox_photo_links", "case_narratives", "cases",
     ]:
         conn.execute(f"DELETE FROM {table} WHERE case_id=?", (case_id,))
     conn.execute("SET FOREIGN_KEY_CHECKS=1")
@@ -626,6 +626,22 @@ def sandbox_edit_layout(request: Request, case_id: str, body: LayoutEditRequest,
     auth.enforce_permission(user, "generate_scenario")
     from pipeline import sandbox
     return _sandbox_guard(sandbox.apply_layout_edits, case_id, body.ops, user)
+
+
+@app.post("/cases/{case_id}/sandbox/photo-links")
+@limiter.limit("3/minute")
+def sandbox_photo_links_create(request: Request, case_id: str, user: dict = Depends(auth.get_current_user)):
+    """Finds the scene's objects in the case photographs (Meta SAM 3.1). Inferred pointers, never proof."""
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox_photos
+    return _sandbox_guard(sandbox_photos.create_photo_links, case_id, user)
+
+
+@app.get("/cases/{case_id}/sandbox/photo-links")
+def sandbox_photo_links_get(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "view_case")
+    from pipeline import sandbox_photos
+    return _sandbox_guard(sandbox_photos.latest_photo_links, case_id) or {"link_id": None, "content": None}
 
 
 @app.get("/cases/{case_id}/sandbox/export")

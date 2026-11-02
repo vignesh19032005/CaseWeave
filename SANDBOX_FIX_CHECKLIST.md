@@ -16,7 +16,7 @@ Merged from `SANDBOX_AUDIT.md` and a second audit run against the live code and 
 
 **101 done, 4 partly done, 0 not started** of 105. `[x]` done and verified by automated tests, `[~]` partly done (note on the line), `[ ]` not started.
 
-Verified by: 394 automated tests (geometry/property, evidence, redaction, API with a mocked model, misc); a 2,500-scene random stress run (multi-room, multi-floor, multi-person) with zero undisclosed blocked paths; real end-to-end generation on case CW-E65FA6 with the real model (before the last outdoor/observer fixes; re-run pending); frontend `tsc` and `eslint` clean.
+Verified by: 412 automated tests (geometry/property, evidence, redaction, provider modes, instruction screen, photo links, API with a mocked model); two 2,500-3,000-scene random stress runs (multi-room, multi-floor, multi-person); a fault-injection evaluation (`backend/scripts/sandbox_eval.py`: 600/600 identical on rebuild, 199/199 deliberately damaged plans caught, 0 unexplained rejections); real generation on case CW-E65FA6 with Meta's hosted model only, plus live SAM 3.1 photo search; a live prompt-injection case; frontend `tsc` and `eslint` clean.
 
 **Browser checks (Chromium):** (1) the real generated scene for CW-E65FA6 and (2) a synthetic 3-floor, 4-person case with two staircases, a cellar, a camera and a witness. API responses were replayed (no live login). Defects found by these runs and fixed: CCTV view blocked by the camera's own cone; label clutter; slow camera settling; cellar hidden by the ground plane; routes shown for hidden floors; a door shown forced before the scenario forces it; no opening in the upper floor where the stairs arrive. Still not confirmed: gait quality, a live login, and the add-object flow through the real backend.
 
@@ -190,3 +190,11 @@ The last row cannot be fixed by code: a simulation can show what the evidence is
 **In mine and not in your audit:** the browser code-execution risk (S1), the unrelated Studio scene, photo reconstruction and segmentation (M9, M10), measured results (3,000-path fuzz, 4 saved scenarios, run-to-run variance, second case, zero-evidence case), invented scenes for empty cases, and title-vs-clock mismatch.
 
 **Not matching the current code:** a few snippets in the older audit (the frame-based timing code and the "(detour)" title) come from an earlier revision. The conclusions still hold.
+
+
+## Added after the checklist (Meta tooling, safety, robustness)
+
+- **Provider modes** (`LLM_PROVIDER_MODE`): `auto` (unchanged), `meta_only`, `local_only` (any OpenAI-compatible server such as Ollama). The run records the mode and every call's model; the screen shows a "Meta models only" or "on-premise model" badge. Tested against a real local HTTP stand-in; **not tested with a real Llama model on this machine** (the 4.9 GB download was too slow here).
+- **Instruction screen** for case text before it reaches a model (`pipeline/evidence_guard.py`): removes prompt-injection phrasing, records what was removed (shown as a badge and in the review pack). A pattern screen, not a guarantee. Verified live with Meta's model on a case whose evidence told the AI to deny any break-in: the instruction was removed and the scenarios still showed the break-in.
+- **Photo links** (`pipeline/sandbox_photos.py`, SAM 3.1 hosted by Meta): finds the scene's objects in the case photographs; boxes are filtered for size and marked inferred; stored, hashed, audited, exported, and marked stale when the layout changes. Live on the four photographs of CW-E65FA6: 28 detector calls, 0 failed, 15 boxes kept. The detector misses some objects (nothing found for the rear shutter photo) and says so.
+- **Engine fixes found by real runs and stress runs:** furniture running across a doorway made a room unreachable and sank every scenario (now cut back and disclosed); outdoor objects could cover the arrival strip at a door; a 5 mm disagreement between planner and validator at an obstacle's edge; a time-conflict message that read "0 min apart" for events in the opposite order.

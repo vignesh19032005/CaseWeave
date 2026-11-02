@@ -86,6 +86,7 @@ MAX_OPENINGS = 60
 MAX_OBSERVERS = 12
 MAX_OUTDOOR = 20
 MAX_LEVELS = (-1, 5)
+BOX_TOLERANCE_M = 0.02  # the planner snaps to a grid; a path within 2 cm of the edge of an obstacle's clearance zone is not a collision
 RESERVED_IDS = {"exterior", "outside", "none", "all"}
 
 SIDES = ("north", "south", "east", "west")
@@ -493,6 +494,24 @@ def _place_fixture_group(room_rect: Rect, items: List[dict], zones: List[Rect], 
                     moved = True
         if not moved:
             break
+    # A piece that still covers a doorway after being pushed around is cut back instead of left
+    # blocking the only way in: the model's size for it was an estimate, a shelf cannot run across a door.
+    for fx in items:
+        for zone in zones:
+            if not _overlap_push(_fixture_rect(fx), zone):
+                continue
+            x0, x1, z0, z1 = _fixture_rect(fx)
+            parts = [(x0, min(x1, zone[0]), z0, z1), (max(x0, zone[1]), x1, z0, z1), (x0, x1, z0, min(z1, zone[2])), (x0, x1, max(z0, zone[3]), z1)]
+            parts = [p for p in parts if p[1] - p[0] >= 0.25 and p[3] - p[2] >= 0.25]
+            if not parts:
+                continue
+            best = max(parts, key=lambda p: (p[1] - p[0]) * (p[3] - p[2]))
+            before = list(fx["footprint_m"])
+            fx["footprint_m"] = [round(best[1] - best[0], 3), round(best[3] - best[2], 3)]
+            fx["pos"] = [round((best[0] + best[1]) / 2, 3), 0.0, round((best[2] + best[3]) / 2, 3)]
+            fx["adjusted"] = True
+            fx["adjust_notes"].append(f"cut back from {before[0]:.1f} x {before[1]:.1f} m to {fx['footprint_m'][0]:.1f} x {fx['footprint_m'][1]:.1f} m to leave the doorway clear")
+            warnings.append(f"{label} '{fx['id']}' was cut back from {before[0]:.1f} x {before[1]:.1f} m to {fx['footprint_m'][0]:.1f} x {fx['footprint_m'][1]:.1f} m because it would have blocked a doorway")
     for fx in items:
         fx["pos"] = [round(fx["pos"][0], 3), 0.0, round(fx["pos"][2], 3)]
         o = originals[fx["id"]]
@@ -842,6 +861,29 @@ def build_layout(raw: Any, known_refs: set) -> Dict[str, Any]:
             warnings.append(f"outdoor object '{oid}' has no outside door to be placed beside and was dropped")
             continue
         box = (pt[0] - fw / 2, pt[0] + fw / 2, pt[2] - fd / 2, pt[2] + fd / 2)
+        asked_pt = list(pt)
+        # an object must not sit on the way in: the strip from an outside door to where people arrive, and a little beyond
+        for _ in range(60):
+            hit = None
+            for op in externals:
+                g, o = op["gap_pos"], op["outside_pos"]
+                nx, nz = o[0] - g[0], o[2] - g[2]
+                ln = math.hypot(nx, nz) or 1.0
+                nx, nz = nx / ln, nz / ln
+                r = ACTOR_RADIUS_M + 0.35
+                ex, ez = o[0] + nx * 0.8, o[2] + nz * 0.8
+                strip = (min(g[0], ex) - r, max(g[0], ex) + r, min(g[2], ez) - r, max(g[2], ez) + r)
+                if _overlap_area(box, strip) > 0:
+                    hit = (op, nx, nz)
+                    break
+            if hit is None:
+                break
+            op, nx, nz = hit
+            lx, lz = -nz, nx  # sideways, along the wall
+            side = (pt[0] - op["outside_pos"][0]) * lx + (pt[2] - op["outside_pos"][2]) * lz
+            sgn = 1.0 if side >= 0 else -1.0
+            pt = [round(pt[0] + lx * sgn * 0.5, 3), 0.0, round(pt[2] + lz * sgn * 0.5, 3)]
+            box = (pt[0] - fw / 2, pt[0] + fw / 2, pt[2] - fd / 2, pt[2] + fd / 2)
         if any(_overlap_area(box, r) > 0 for r in outer_rects):
             warnings.append(f"outdoor object '{oid}' would overlap the building and was dropped")
             continue
@@ -850,7 +892,8 @@ def build_layout(raw: Any, known_refs: set) -> Dict[str, Any]:
         outdoor_objects.append({"id": oid, "label": clean_text(it.get("label"), 80) or oid, "kind": kind if kind in ("vehicle", "object", "fence", "tree") else "object",
                                 "room": "outside", "pos": pt, "footprint_m": [round(fw, 3), round(fd, 3)],
                                 "height_m": round(clamp(h if h is not None else 1.2, 0.1, 4.0), 3), "color_hex": "#64748b",
-                                "evidence_refs": refs, "basis": _basis(it.get("basis"), refs), "adjusted": False, "adjust_notes": [], "requested_pos": pt})
+                                "evidence_refs": refs, "basis": _basis(it.get("basis"), refs), "adjusted": asked_pt != pt,
+                                "adjust_notes": ["moved clear of the spot where people arrive at the door"] if asked_pt != pt else [], "requested_pos": asked_pt})
     for kl in key_locations:
         if kl.get("room") == "outside":
             n = kl.pop("_near")
@@ -1948,10 +1991,10 @@ class _Regions:
         outers = self.outer.get(level, [])
         if level == 0:
             if not any(_strictly_in_rect(p, o, 1e-7) for o in outers):
-                return not any(_strictly_in_rect(p, b, 1e-7) for b in self.out_boxes)
+                return not any(_strictly_in_rect(p, b, BOX_TOLERANCE_M) for b in self.out_boxes)
         for rid, w in self.walk.get(level, []):
             if _in_rect(p, w, 1e-7):
-                return not any(_strictly_in_rect(p, b, 1e-7) for b in self.boxes.get(rid, []))
+                return not any(_strictly_in_rect(p, b, BOX_TOLERANCE_M) for b in self.boxes.get(rid, []))
         return any(_in_rect(p, c, 1e-7) for c in self.corr.get(level, []))
 
     def breakpoints(self, level: int) -> List[Rect]:
