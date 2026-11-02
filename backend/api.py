@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, FileResponse
 from pydantic import BaseModel
@@ -26,7 +26,6 @@ from db import init_db, get_conn, file_hash, append_audit_event, verify_audit_ch
 from storage import put_object, get_object_path
 from pipeline.timeline import get_timeline as read_timeline
 from pipeline.discrepancy import update_review_status, get_conflict_reviews
-from pipeline.scene import generate_scene_jsx
 from pipeline.entities import resolve_entities
 from pipeline.case_chat import ask_case
 from pipeline.incident_reconstruction import reconstruct_incident
@@ -188,9 +187,8 @@ def get_case(case_id: str, user: dict = Depends(auth.get_current_user)):
 def delete_case(case_id: str, user: dict = Depends(auth.get_current_user)):
     """Permanently removes a case: all DB rows, stored evidence files, and
     the case-evidence chat index. No undo — the UI confirms before calling
-    this. Audit events for the case are deleted too (there's no case left
-    for them to attest to); this is a real destructive admin action, not
-    something Stage 18's future retention policy replaces."""
+    this. The case's audit trail is KEPT and a final "case_deleted" event is
+    added to it, so who deleted what and when stays on record."""
     auth.enforce_permission(user, "delete_case")
     conn = get_conn()
     case = conn.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()
@@ -198,13 +196,17 @@ def delete_case(case_id: str, user: dict = Depends(auth.get_current_user)):
         conn.close()
         raise HTTPException(404, "case not found")
     conn.execute("SET FOREIGN_KEY_CHECKS=0")
+    # audit_events are deliberately NOT deleted: the chain of custody outlives the case,
+    # and the deletion itself is recorded below as the last event in that chain.
     for table in [
         "evidence_items", "observations", "entities", "entity_mentions", "relationships",
-        "timeline_events", "conflicts", "evidence_links", "conflict_reviews", "audit_events", "cases",
+        "timeline_events", "conflicts", "evidence_links", "conflict_reviews",
+        "sandbox_scenarios", "sandbox_runs", "case_narratives", "cases",
     ]:
         conn.execute(f"DELETE FROM {table} WHERE case_id=?", (case_id,))
     conn.execute("SET FOREIGN_KEY_CHECKS=1")
     conn.commit()
+    append_audit_event(conn, case_id, user["role"], "case_deleted", f"{case_id}|by:{user['username']}"[:128])
     conn.close()
 
     shutil.rmtree(Path(__file__).parent / "object_store" / case_id, ignore_errors=True)
@@ -505,6 +507,12 @@ def reconstruct_case(case_id: str, user: dict = Depends(auth.get_current_user)):
         result = reconstruct_incident(case_id, timeline_events, entities, relationships, conflicts, evidence_links)
     except Exception as e:
         raise HTTPException(500, str(e))
+    from pipeline import sandbox as _sandbox
+    try:
+        saved = _sandbox.save_narrative(case_id, result, user)
+        result = {**result, "narrative_id": saved["narrative_id"]}
+    except Exception:
+        _log.exception("could not save the incident narrative")
 
     conn = get_conn()
     append_audit_event(conn, case_id, user["role"], "incident_reconstruction_run", case_id)
@@ -512,60 +520,141 @@ def reconstruct_case(case_id: str, user: dict = Depends(auth.get_current_user)):
     return result
 
 
-# ------------------------------------------------------------------ Scene ----
+# ------------------------------------------- Scene reconstruction sandbox ----
 
-class SceneRequest(BaseModel):
-    description: str
-    width_m: float
-    length_m: float
-    height_m: float
+class GenerateRequest(BaseModel):
+    mode: str = "full"  # "full" builds a new scene; "scenarios_only" keeps the current layout
 
 
-@app.post("/cases/{case_id}/scene")
-def create_scene(case_id: str, body: SceneRequest, user: dict = Depends(auth.get_current_user)):
-    result = generate_scene_jsx(
-        body.description,
-        {"width_m": body.width_m, "length_m": body.length_m, "height_m": body.height_m},
-    )
-    return result
-
-
-# ---------------------------------- Virtual Crime Scene Sandbox & Scenarios ----
-
-class CustomScenarioInterviewRequest(BaseModel):
+class InterviewRequest(BaseModel):
     hypothesis_text: str
 
 
-class CustomScenarioSynthesizeRequest(BaseModel):
+class OfficerScenarioRequest(BaseModel):
     hypothesis_text: str
-    answers: dict = {}
+    interview: list = []  # [{"question": "...", "answer": "..."}]
 
 
-@app.get("/cases/{case_id}/sandbox/scenarios")
-def get_sandbox_scenarios_endpoint(case_id: str, user: dict = Depends(auth.get_current_user)):
-    """Fetch Top 3 automated scenarios and officer custom scenarios."""
-    from pipeline.sandbox import get_case_sandbox_scenarios
-    return get_case_sandbox_scenarios(case_id)
+class RetractRequest(BaseModel):
+    reason: str
 
 
-@app.post("/cases/{case_id}/sandbox/custom-scenario/interview")
-def custom_scenario_interview_endpoint(
-    case_id: str, body: CustomScenarioInterviewRequest, user: dict = Depends(auth.get_current_user)
-):
-    """Generate 3 Socratic Forensic Questions to verify officer hypothesis."""
-    from pipeline.sandbox import generate_socratic_interview
-    questions = generate_socratic_interview(case_id, body.hypothesis_text)
-    return {"case_id": case_id, "hypothesis_text": body.hypothesis_text, "questions": questions}
+class LayoutEditRequest(BaseModel):
+    ops: list  # [{"op": "set|add|remove", "kind": "room|fixture|opening|key_location|observer|outdoor_object", "id": "...", "fields": {...}}]
 
 
-@app.post("/cases/{case_id}/sandbox/custom-scenario/synthesize")
-def custom_scenario_synthesize_endpoint(
-    case_id: str, body: CustomScenarioSynthesizeRequest, user: dict = Depends(auth.get_current_user)
-):
-    """Synthesize officer custom scenario into a full 3D simulation with physics validation."""
-    from pipeline.sandbox import synthesize_custom_scenario
-    scenario = synthesize_custom_scenario(case_id, body.hypothesis_text, body.answers)
-    return scenario
+def _sandbox_guard(fn, *args, **kwargs):
+    """Maps the sandbox's own errors to clean HTTP statuses and never leaks
+    internal exception text for anything unexpected."""
+    from pipeline.sandbox import SandboxError
+    try:
+        return fn(*args, **kwargs)
+    except SandboxError as e:
+        raise HTTPException(e.status_code, e.message)
+    except HTTPException:
+        raise
+    except Exception:
+        log_event(_log, "error", "sandbox endpoint failed", endpoint=getattr(fn, "__name__", "?"))
+        _log.exception("sandbox endpoint failed")
+        raise HTTPException(500, "The scene service hit an unexpected error. It was logged on the server.")
+
+
+@app.get("/cases/{case_id}/sandbox")
+def sandbox_state(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """Read-only. Returns the saved scene and scenarios; never generates anything."""
+    auth.enforce_permission(user, "view_case")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.get_state, case_id)
+
+
+@app.get("/cases/{case_id}/sandbox/runs/{run_id}")
+def sandbox_run(case_id: str, run_id: str, user: dict = Depends(auth.get_current_user)):
+    """Any earlier version, read-only (nothing is ever deleted)."""
+    auth.enforce_permission(user, "view_case")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.get_run, case_id, run_id)
+
+
+@app.post("/cases/{case_id}/sandbox/generate", status_code=202)
+@limiter.limit("5/minute")
+def sandbox_generate(request: Request, case_id: str, body: GenerateRequest, background_tasks: BackgroundTasks,
+                     user: dict = Depends(auth.get_current_user)):
+    """Starts scene generation in the background and returns at once. Poll GET /sandbox."""
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox
+    run_id = _sandbox_guard(sandbox.start_generation, case_id, user, body.mode)
+    background_tasks.add_task(sandbox.run_generation, run_id, case_id, user, body.mode)
+    return {"run_id": run_id, "status": "generating"}
+
+
+@app.post("/cases/{case_id}/sandbox/approve-layout")
+def sandbox_approve(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "approve_layout")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.approve_layout, case_id, user)
+
+
+@app.post("/cases/{case_id}/sandbox/interview")
+@limiter.limit("10/minute")
+def sandbox_interview(request: Request, case_id: str, body: InterviewRequest, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox
+    questions = _sandbox_guard(sandbox.generate_interview, case_id, body.hypothesis_text, user)
+    return {"case_id": case_id, "questions": questions}
+
+
+@app.post("/cases/{case_id}/sandbox/scenarios")
+@limiter.limit("10/minute")
+def sandbox_officer_scenario(request: Request, case_id: str, body: OfficerScenarioRequest, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.synthesize_custom, case_id, body.hypothesis_text, body.interview, user)
+
+
+@app.post("/cases/{case_id}/sandbox/scenarios/{scenario_id}/retract")
+def sandbox_retract(case_id: str, scenario_id: str, body: RetractRequest, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.retract_scenario, case_id, scenario_id, body.reason, user)
+
+
+@app.post("/cases/{case_id}/sandbox/layout")
+@limiter.limit("20/minute")
+def sandbox_edit_layout(request: Request, case_id: str, body: LayoutEditRequest, user: dict = Depends(auth.get_current_user)):
+    """Officer measurements and corrections. Builds a new version of the scene (the old one is kept)
+    and re-plans every scenario on it without calling a model."""
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.apply_layout_edits, case_id, body.ops, user)
+
+
+@app.get("/cases/{case_id}/sandbox/export")
+def sandbox_export(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """Review pack: scene, scenarios, citations, raw model calls, audit trail, hashes."""
+    auth.enforce_permission(user, "export_report")
+    from pipeline import sandbox
+    return _sandbox_guard(sandbox.export_pack, case_id, user)
+
+
+@app.get("/cases/{case_id}/sandbox/export.pdf")
+def sandbox_export_pdf(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """The same review pack as a printable PDF with floor plans and routes."""
+    auth.enforce_permission(user, "export_report")
+    from pipeline import sandbox
+    from pipeline.sandbox_pdf import render_pack_pdf
+    from fastapi.responses import Response
+    pack = _sandbox_guard(sandbox.export_pack, case_id, user)
+    return Response(render_pack_pdf(pack), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="CaseWeave_Scene_Review_{case_id}.pdf"'})
+
+
+@app.get("/cases/{case_id}/narrative")
+def get_saved_narrative(case_id: str, user: dict = Depends(auth.get_current_user)):
+    """The latest saved incident narrative (versions are kept)."""
+    auth.enforce_permission(user, "view_case")
+    from pipeline import sandbox
+    n = _sandbox_guard(sandbox.latest_narrative, case_id)
+    return n or {"narrative_id": None, "content": None}
 
 
 # ----------------------------------------------------------- Segmentation (Stage 8) ----

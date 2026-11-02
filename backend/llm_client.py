@@ -65,7 +65,7 @@ def _post_json(url: str, headers: dict, payload: dict, timeout: int = 60, retrie
             raise
 
 
-def _call_meta(system: str, prompt: str, max_tokens: int) -> str:
+def _call_meta(system: str, prompt: str, max_tokens: int, timeout: int = 60) -> str:
     api_key = os.environ.get("META_API_KEY", "").strip()
     base_url = os.environ.get("META_API_BASE_URL", "https://api.meta.ai/v1").strip()
     if not api_key:
@@ -76,13 +76,16 @@ def _call_meta(system: str, prompt: str, max_tokens: int) -> str:
     # earlier docs implied. System + user prompt concatenated into one
     # input string since this endpoint takes a single input, not a
     # messages array.
+    # max_tokens is deliberately NOT sent: this API counts its hidden
+    # reasoning tokens against max_output_tokens, and a live test with a small
+    # cap returned an empty reply. Output size is bounded after the fact.
     payload = {
         "model": "muse-wonder-1.0",
         "input": f"{system}\n\n{prompt}",
         "reasoning": {"effort": "high"},
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    result = _post_json(f"{base_url}/responses", headers, payload)
+    result = _post_json(f"{base_url}/responses", headers, payload, timeout=timeout, retries=2 if timeout > 100 else 3)
     for item in result.get("output", []):
         if item.get("type") == "message":
             for block in item.get("content", []):
@@ -91,7 +94,7 @@ def _call_meta(system: str, prompt: str, max_tokens: int) -> str:
     raise LLMUnavailableError(f"Meta API response had no message/output_text block: {result}")
 
 
-def _call_groq(system: str, prompt: str, max_tokens: int) -> str:
+def _call_groq(system: str, prompt: str, max_tokens: int, timeout: int = 60) -> str:
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
     model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
     if not api_key:
@@ -108,14 +111,14 @@ def _call_groq(system: str, prompt: str, max_tokens: int) -> str:
         "reasoning_effort": "low",
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    result = _post_json("https://api.groq.com/openai/v1/chat/completions", headers, payload)
+    result = _post_json("https://api.groq.com/openai/v1/chat/completions", headers, payload, timeout=timeout)
     content = result["choices"][0]["message"]["content"]
     if not content:
         raise LLMUnavailableError("groq returned empty content (reasoning model may have exhausted token budget)")
     return content
 
 
-def _call_gemini(system: str, prompt: str, max_tokens: int) -> str:
+def _call_gemini(system: str, prompt: str, max_tokens: int, timeout: int = 60) -> str:
     api_key = os.environ.get("GOOGLE_API_KEY", "").strip()
     model = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash").strip()
     if not api_key:
@@ -127,7 +130,7 @@ def _call_gemini(system: str, prompt: str, max_tokens: int) -> str:
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
     }
     headers = {"Content-Type": "application/json"}
-    result = _post_json(url, headers, payload)
+    result = _post_json(url, headers, payload, timeout=timeout)
     return result["candidates"][0]["content"]["parts"][0]["text"]
 
 
@@ -250,13 +253,13 @@ def chat_vision_json(system: str, prompt: str, image_path, max_tokens: int = 204
         raise LLMUnavailableError(f"{provider} returned non-JSON output: {e}\nRaw: {text[:300]}")
 
 
-def chat(system: str, prompt: str, max_tokens: int = 2048) -> tuple[str, str]:
+def chat(system: str, prompt: str, max_tokens: int = 2048, timeout: int | None = None) -> tuple[str, str]:
     """Returns (provider_name_used, response_text). Raises LLMUnavailableError if all fail."""
     errors = []
     start = time.time()
     for name, fn in PROVIDERS:
         try:
-            text = fn(system, prompt, max_tokens)
+            text = fn(system, prompt, max_tokens) if timeout is None else fn(system, prompt, max_tokens, timeout)
             latency_ms = round((time.time() - start) * 1000)
             if name != "meta":
                 log_event(_log, "warning", "non-primary LLM provider used", provider=name, latency_ms=latency_ms)
@@ -278,12 +281,22 @@ def chat(system: str, prompt: str, max_tokens: int = 2048) -> tuple[str, str]:
     )
 
 
-def chat_json(system: str, prompt: str, max_tokens: int = 2048) -> tuple[str, dict]:
-    """Same as chat(), but parses the response as JSON. Tolerates trailing junk
-    after a valid JSON value (a model sometimes appends stray text/whitespace
-    after a complete array) by taking the first valid value instead of failing
-    outright. Raises LLMUnavailableError only if no valid JSON value is found."""
-    provider, text = chat(system, prompt, max_tokens)
+def model_id(provider: str) -> str:
+    """The model name behind a provider label, recorded with every generated
+    artifact so a result can be traced to the exact model that produced it."""
+    if provider == "meta":
+        return "muse-wonder-1.0"
+    if provider == "groq":
+        return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+    if provider == "gemini":
+        return os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash").strip()
+    return provider
+
+
+def _parse_json_text(provider: str, text: str):
+    """Parses model output as JSON. Tolerates a markdown fence, prose before
+    the JSON, and stray text after it; raises LLMUnavailableError only if no
+    valid JSON value can be found."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
@@ -291,12 +304,27 @@ def chat_json(system: str, prompt: str, max_tokens: int = 2048) -> tuple[str, di
             cleaned = cleaned[4:]
     cleaned = cleaned.strip()
     try:
-        return provider, json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        if e.msg == "Extra data":
-            try:
-                value, _ = json.JSONDecoder().raw_decode(cleaned)
-                return provider, value
-            except json.JSONDecodeError:
-                pass
-        raise LLMUnavailableError(f"{provider} returned non-JSON output: {e}\nRaw: {text[:300]}")
+        return json.loads(cleaned)
+    except json.JSONDecodeError as first:
+        decoder = json.JSONDecoder()
+        for i, ch in enumerate(cleaned):
+            if ch in "{[":
+                try:
+                    value, _ = decoder.raw_decode(cleaned[i:])
+                    return value
+                except json.JSONDecodeError:
+                    continue
+        raise LLMUnavailableError(f"{provider} returned non-JSON output: {first} | Raw: {text[:300]}")
+
+
+def chat_json(system: str, prompt: str, max_tokens: int = 2048) -> tuple[str, dict]:
+    """Same as chat(), but parses the response as JSON (see _parse_json_text)."""
+    provider, text = chat(system, prompt, max_tokens)
+    return provider, _parse_json_text(provider, text)
+
+
+def chat_json_ex(system: str, prompt: str, max_tokens: int = 2048, timeout: int | None = None) -> dict:
+    """chat_json plus what is needed to audit the call: the model name and
+    the raw, unparsed reply."""
+    provider, text = chat(system, prompt, max_tokens, timeout)
+    return {"provider": provider, "model": model_id(provider), "parsed": _parse_json_text(provider, text), "raw": text}

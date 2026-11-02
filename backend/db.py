@@ -33,6 +33,7 @@ def _mysql_config() -> dict:
         "database": get_secret("MYSQL_DATABASE") or "caseweave",
         "cursorclass": pymysql.cursors.DictCursor,
         "autocommit": False,
+        "charset": "utf8mb4",
     }
 
 
@@ -171,21 +172,59 @@ SCHEMA_STATEMENTS = [
         computed_at VARCHAR(64),
         created_at VARCHAR(64)
     )""",
-    """CREATE TABLE IF NOT EXISTS case_sandbox_scenarios (
+    """CREATE TABLE IF NOT EXISTS sandbox_runs (
+        run_id VARCHAR(64) PRIMARY KEY,
+        case_id VARCHAR(64) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        is_current TINYINT NOT NULL DEFAULT 0,
+        schema_version INT NOT NULL,
+        mode VARCHAR(24),
+        evidence_hash VARCHAR(64),
+        layout_json LONGTEXT,
+        layout_hash VARCHAR(64),
+        assessment_json LONGTEXT,
+        evidence_index_json LONGTEXT,
+        generation_meta_json LONGTEXT,
+        status_message TEXT,
+        approved_by VARCHAR(128),
+        approved_at VARCHAR(40),
+        created_by VARCHAR(128),
+        created_at VARCHAR(40),
+        completed_at VARCHAR(40),
+        INDEX (case_id),
+        INDEX (case_id, is_current)
+    ) DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS sandbox_scenarios (
         scenario_id VARCHAR(64) PRIMARY KEY,
-        case_id VARCHAR(64),
-        scenario_type VARCHAR(32) DEFAULT 'automated',
-        title VARCHAR(128),
-        hypothesis_summary TEXT,
-        evidence_fit_pct INT DEFAULT 75,
-        physics_validation_json LONGTEXT,
-        frames_json LONGTEXT,
-        trajectory_json LONGTEXT,
-        scene_config_json LONGTEXT,
-        interview_qa_json LONGTEXT,
-        computed_at VARCHAR(64),
-        created_at VARCHAR(64),
+        run_id VARCHAR(64) NOT NULL,
+        case_id VARCHAR(64) NOT NULL,
+        scenario_type VARCHAR(24) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        rank_order INT,
+        content_json LONGTEXT,
+        content_hash VARCHAR(64),
+        interview_json LONGTEXT,
+        created_by VARCHAR(128),
+        created_at VARCHAR(40),
+        retracted_by VARCHAR(128),
+        retracted_at VARCHAR(40),
+        retracted_reason TEXT,
+        INDEX (run_id),
         INDEX (case_id)
+    ) DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS case_narratives (
+        narrative_id VARCHAR(64) PRIMARY KEY,
+        case_id VARCHAR(64) NOT NULL,
+        evidence_hash VARCHAR(64),
+        content_json LONGTEXT,
+        content_hash VARCHAR(64),
+        created_by VARCHAR(128),
+        created_at VARCHAR(40),
+        INDEX (case_id)
+    ) DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS schema_migrations (
+        name VARCHAR(80) PRIMARY KEY,
+        applied_at VARCHAR(40)
     )""",
 ]
 
@@ -247,6 +286,9 @@ class _ConnWrapper:
     def commit(self):
         self._conn.commit()
 
+    def rollback(self):
+        self._conn.rollback()
+
     def close(self):
         self._conn.close()
 
@@ -256,11 +298,44 @@ def get_conn() -> _ConnWrapper:
     return _ConnWrapper(raw)
 
 
+def _table_exists(conn, name: str) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?", (name,)
+    ).fetchone()
+    return bool(row and row["n"])
+
+
+def _migration_001_retire_unversioned_sandbox_tables(conn):
+    """The first sandbox kept one overwritable row per case. Those tables
+    held derived, regenerable data in an older shape, so they are renamed
+    (not dropped) and the versioned tables take over."""
+    for old in ("case_sandbox_scenarios", "case_sandbox_layout"):
+        if _table_exists(conn, old) and not _table_exists(conn, f"legacy_{old}"):
+            conn.execute(f"RENAME TABLE {old} TO legacy_{old}")
+
+
+MIGRATIONS = [
+    ("001_retire_unversioned_sandbox_tables", _migration_001_retire_unversioned_sandbox_tables),
+]
+
+
+def _run_migrations(conn):
+    import datetime
+    applied = {r["name"] for r in conn.execute("SELECT name FROM schema_migrations").fetchall()}
+    for name, fn in MIGRATIONS:
+        if name in applied:
+            continue
+        fn(conn)
+        conn.execute("INSERT INTO schema_migrations VALUES (?,?)", (name, datetime.datetime.utcnow().isoformat()))
+        conn.commit()
+
+
 def init_db():
     conn = get_conn()
     for statement in SCHEMA_STATEMENTS:
         conn.execute(statement)
     conn.commit()
+    _run_migrations(conn)
     conn.close()
 
 
@@ -272,7 +347,7 @@ def reset_db():
     for table in [
         "cases", "evidence_items", "observations", "entities", "entity_mentions",
         "relationships", "users", "timeline_events", "conflicts", "evidence_links",
-        "conflict_reviews", "audit_events",
+        "conflict_reviews", "sandbox_scenarios", "sandbox_runs", "case_narratives", "schema_migrations", "audit_events",
     ]:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.execute("SET FOREIGN_KEY_CHECKS=1")
@@ -321,6 +396,46 @@ def append_audit_event(conn, case_id, actor_role, action, target):
     finally:
         cur.execute("SELECT RELEASE_LOCK(?)", (lock_name,))
     return this_hash
+
+
+def append_audit_event_txn(conn, case_id, actor_role, action, target):
+    """Appends an audit event inside the caller's open transaction.
+
+    The event and the record it attests to are committed together or not at
+    all. The per-case audit lock is taken here and held until the caller has
+    committed (or rolled back) and calls the returned release function, so no
+    other writer can fork the hash chain in between. Returns (this_hash, release).
+    """
+    import datetime
+
+    cur = conn.cursor()
+    lock_name = f"cw_audit_{case_id}"[:64]
+    cur.execute("SELECT GET_LOCK(?, 10) AS got", (lock_name,))
+    if not cur.fetchone()["got"]:
+        raise RuntimeError(f"could not acquire audit lock for {case_id}")
+
+    def release():
+        try:
+            cur2 = conn.cursor()
+            cur2.execute("SELECT RELEASE_LOCK(?)", (lock_name,))
+        except Exception:
+            pass
+
+    try:
+        # locking read: sees the latest committed row even inside an older snapshot
+        cur.execute("SELECT this_hash FROM audit_events WHERE case_id=? ORDER BY timestamp DESC LIMIT 1 FOR UPDATE", (case_id,))
+        row = cur.fetchone()
+        prev_hash = row["this_hash"] if row else "GENESIS"
+        timestamp = datetime.datetime.utcnow().isoformat(timespec="microseconds")
+        audit_id = f"audit_{case_id}_{timestamp}_{action}"[:255]
+        payload = json.dumps({"prev_hash": prev_hash, "action": action, "target": target, "timestamp": timestamp}, sort_keys=True)
+        this_hash = hashlib.sha256(payload.encode()).hexdigest()
+        cur.execute("INSERT INTO audit_events VALUES (?,?,?,?,?,?,?,?)",
+                    (audit_id, case_id, actor_role, action, target, timestamp, prev_hash, this_hash))
+    except Exception:
+        release()
+        raise
+    return this_hash, release
 
 
 def verify_audit_chain(conn, case_id) -> bool:

@@ -2,8 +2,10 @@
 Stage 8 — Object Segmentation. Real Meta-hosted SAM 3.1 via the same
 Responses API used everywhere else (model="sam-3.1"), NOT the self-hosted
 local weights originally planned — Meta hosts this one, confirmed live.
-Give it a short noun phrase + an image/video, get back a box + pixel-
-accurate mask per match. No local GPU/weights needed for this stage.
+Give it a short noun phrase + an image, get back a bounding box per match
+(this integration reads boxes only; it does not return pixel masks). Results
+are shown to the investigator on screen and are not stored or fed into the
+scene reconstruction. No local GPU/weights needed for this stage.
 """
 import base64
 import json
@@ -92,6 +94,7 @@ def segment_image(image_path, text_prompt: str) -> dict:
     terms = [t.strip() for t in text_prompt.split(",") if t.strip()]
     if len(terms) > 1:
         all_matches = []
+        errors = []
         PALETTE = ["#10b981", "#06b6d4", "#f59e0b", "#ec4899", "#8b5cf6"]
         for term in terms:
             try:
@@ -99,13 +102,16 @@ def segment_image(image_path, text_prompt: str) -> dict:
                 for m in res.get("matches", []):
                     m["color"] = PALETTE[len(all_matches) % len(PALETTE)]
                     all_matches.append(m)
-            except Exception:
-                continue
+            except Exception as e:  # noqa: BLE001 - reported below, never hidden
+                errors.append(f"'{term}': {e}")
+        if errors and len(errors) == len(terms):
+            # every term failed: that is an outage, not "nothing found"
+            raise RuntimeError("segmentation failed for every term: " + "; ".join(errors))
         return {
             "matches": all_matches,
             "prompt": text_prompt,
             "image_path": str(image_path),
             "detected_count": len(all_matches),
+            "failed_terms": errors,
         }
     return _segment_single(image_path, text_prompt)
-

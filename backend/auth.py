@@ -39,6 +39,8 @@ ROLES = ("investigator", "reviewer", "admin")
 # endpoint action -> roles allowed to perform it
 PERMISSIONS = {
     "upload_evidence": ("investigator", "admin"),
+    "generate_scenario": ("investigator", "admin"),
+    "approve_layout": ("reviewer", "admin"),
     "view_case": ("investigator", "reviewer", "admin"),
     "confirm_conflict": ("reviewer", "admin"),
     "export_report": ("admin",),

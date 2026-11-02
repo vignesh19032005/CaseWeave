@@ -159,13 +159,6 @@ export const api = {
 
   reconstruct: (caseId: string) => request(`/cases/${caseId}/reconstruct`, { method: "POST" }),
 
-  generateScene: (caseId: string, description: string, widthM: number, lengthM: number, heightM: number) =>
-    request(`/cases/${caseId}/scene`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description, width_m: widthM, length_m: lengthM, height_m: heightM }),
-    }),
-
   askCase: (caseId: string, question: string, history: { question: string; answer: string }[] = []) =>
     request(`/cases/${caseId}/chat`, {
       method: "POST",
@@ -216,17 +209,86 @@ export const api = {
   getLegalCompliance: (caseId: string) => request(`/cases/${caseId}/legal-compliance`),
   getLegalAdvisory: (caseId: string) => request(`/cases/${caseId}/legal-advisory`),
 
-  getSandboxScenarios: (caseId: string) => request(`/cases/${caseId}/sandbox/scenarios`),
-  interviewCustomScenario: (caseId: string, hypothesisText: string) =>
-    request(`/cases/${caseId}/sandbox/custom-scenario/interview`, {
+  // Scene reconstruction sandbox. GET never generates; generation is an explicit POST
+  // that runs in the background and is polled via getSandbox.
+  getSandbox: (caseId: string) => request(`/cases/${caseId}/sandbox`),
+  getSandboxRun: (caseId: string, runId: string) => request(`/cases/${caseId}/sandbox/runs/${runId}`),
+  generateSandbox: (caseId: string, mode: "full" | "scenarios_only") =>
+    request(`/cases/${caseId}/sandbox/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    }),
+  approveSandboxLayout: (caseId: string) => request(`/cases/${caseId}/sandbox/approve-layout`, { method: "POST" }),
+  sandboxInterview: (caseId: string, hypothesisText: string) =>
+    request(`/cases/${caseId}/sandbox/interview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hypothesis_text: hypothesisText }),
     }),
-  synthesizeCustomScenario: (caseId: string, hypothesisText: string, answers: Record<string, string>) =>
-    request(`/cases/${caseId}/sandbox/custom-scenario/synthesize`, {
+  createOfficerScenario: (caseId: string, hypothesisText: string, interview: { question: string; answer: string }[]) =>
+    request(`/cases/${caseId}/sandbox/scenarios`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hypothesis_text: hypothesisText, answers }),
+      body: JSON.stringify({ hypothesis_text: hypothesisText, interview }),
     }),
+  retractScenario: (caseId: string, scenarioId: string, reason: string) =>
+    request(`/cases/${caseId}/sandbox/scenarios/${scenarioId}/retract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }),
+  editSandboxLayout: (caseId: string, ops: { op: string; kind: string; id?: string; fields?: Record<string, unknown> }[]) =>
+    request(`/cases/${caseId}/sandbox/layout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ops }),
+    }),
+  getNarrative: (caseId: string) => request(`/cases/${caseId}/narrative`),
+  downloadSandboxPdf: async (caseId: string) => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API}/cases/${caseId}/sandbox/export.pdf`, { headers });
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "session expired — redirecting to login");
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new ApiError(res.status, body.detail || res.statusText);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `CaseWeave_Scene_Review_${caseId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  downloadSandboxPack: async (caseId: string) => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API}/cases/${caseId}/sandbox/export`, { headers });
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "session expired — redirecting to login");
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new ApiError(res.status, body.detail || res.statusText);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `CaseWeave_Scene_Review_Pack_${caseId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

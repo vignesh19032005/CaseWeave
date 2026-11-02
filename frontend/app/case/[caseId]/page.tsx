@@ -1,14 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState, type ComponentType } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { api, getToken, ApiError } from "../../lib/api";
 import EntityGraph from "./EntityGraph";
 
-const DynamicScene = dynamic(() => import("../../scene/DynamicScene"), { ssr: false });
 const ForensicSandboxPlayer = dynamic(() => import("../../scene/ForensicSandboxPlayer"), { ssr: false });
-import type { SandboxScenario } from "../../scene/ForensicSandboxPlayer";
 
 type EvidenceItem = {
   evidence_id: string;
@@ -139,25 +137,6 @@ function CaseStudio() {
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedConflictId, setSelectedConflictId] = useState<string | null>(null);
-  const [sandboxScenarios, setSandboxScenarios] = useState<SandboxScenario[]>([]);
-
-  const DEFAULT_SCENE_DESC = "describe the room/location, door(s), and any objects or evidence visible — generate scene auto-fills this once evidence is uploaded";
-  // null = not yet hand-edited, so the description below is derived from
-  // evidence/timeline at render time rather than synced via an effect.
-  const [manualSceneDesc, setManualSceneDesc] = useState<string | null>(null);
-  const sceneDescAuto = manualSceneDesc === null;
-  const sceneDesc = manualSceneDesc ?? (() => {
-    const imageNames = evidence
-      .filter((e) => e.evidence_type === "image")
-      .map((e) => e.filename.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " "));
-    const sampleEvents = timeline.slice(0, 4).map((e) => e.description);
-    const parts = [...imageNames, ...sampleEvents].filter(Boolean);
-    return parts.length > 0 ? parts.join("; ") : DEFAULT_SCENE_DESC;
-  })();
-  const [sceneDims, setSceneDims] = useState({ width_m: 10, length_m: 14, height_m: 4 });
-  const [sceneJsx, setSceneJsx] = useState<string | null>(null);
-  const [sceneBusy, setSceneBusy] = useState(false);
-
   const [question, setQuestion] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
@@ -191,13 +170,12 @@ function CaseStudio() {
 
   async function refreshDerived() {
     try {
-      const [tl, cf, links, ent, audit, scenRes] = await Promise.all([
+      const [tl, cf, links, ent, audit] = await Promise.all([
         api.getTimeline(caseId).catch(() => []),
         api.getConflicts(caseId).catch(() => []),
         api.getEvidenceLinks(caseId).catch(() => []),
         api.getEntities(caseId).catch(() => ({ entities: [], relationships: [], mentions: [] })),
         api.getAudit(caseId).catch(() => ({ chain_integrity: "", events: [] })),
-        api.getSandboxScenarios(caseId).catch(() => ({ scenarios: [] })),
       ]);
       setTimeline(tl);
       setConflicts(cf);
@@ -207,20 +185,11 @@ function CaseStudio() {
       setMentions(ent.mentions ?? []);
       setAuditStatus(audit.chain_integrity);
       setAuditEvents(audit.events ?? []);
-      if ((scenRes as any)?.scenarios) {
-        setSandboxScenarios((scenRes as any).scenarios);
-      }
+      // the saved incident narrative (so a reload does not lose it)
+      api.getNarrative(caseId).then((n: { content?: Narrative | null }) => { if (n?.content) setNarrative((cur) => cur ?? n.content ?? null); }).catch(() => undefined);
     } catch {
       // best-effort — individual fetches already swallow their own errors
     }
-  }
-
-  async function handleSynthesizeCustomScenario(hypothesisText: string, answers: Record<string, string>) {
-    const res = (await api.synthesizeCustomScenario(caseId, hypothesisText, answers)) as any;
-    if (res && res.scenario) {
-      setSandboxScenarios((prev) => [res.scenario, ...prev]);
-    }
-    return res?.scenario;
   }
 
   async function refreshEvidence() {
@@ -315,19 +284,6 @@ function CaseStudio() {
       setConflicts((prev) => prev.map((c) => (c.conflict_id === conflictId ? { ...c, review_status: status } : c)));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not update review status");
-    }
-  }
-
-  async function generateScene() {
-    setSceneBusy(true);
-    setError("");
-    try {
-      const result = await api.generateScene(caseId, sceneDesc, sceneDims.width_m, sceneDims.length_m, sceneDims.height_m);
-      setSceneJsx(result.jsx);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Scene generation failed");
-    } finally {
-      setSceneBusy(false);
     }
   }
 
@@ -458,15 +414,6 @@ function CaseStudio() {
             entities={entities}
             relationships={relationships}
             highlightedEntityIds={highlightedEntityIds}
-            sceneDesc={sceneDesc}
-            sceneDescAuto={sceneDescAuto}
-            setSceneDesc={setManualSceneDesc}
-            sceneDims={sceneDims}
-            setSceneDims={setSceneDims}
-            sceneJsx={sceneJsx}
-            sceneBusy={sceneBusy}
-            onGenerateScene={generateScene}
-            DynamicScene={DynamicScene}
             question={question}
             setQuestion={setQuestion}
             chatHistory={chatHistory}
@@ -481,8 +428,6 @@ function CaseStudio() {
               setTab("conflicts");
             }}
             caseId={caseId}
-            sandboxScenarios={sandboxScenarios}
-            onGenerateCustomScenario={handleSynthesizeCustomScenario}
           />
         )}
 
@@ -972,9 +917,6 @@ function EvidenceImage({
   );
 }
 
-type SceneComponent = ComponentType<{ jsx: string }>;
-type SceneDims = { width_m: number; length_m: number; height_m: number };
-
 type StudioTabProps = {
   timeline: TimelineEvent[];
   conflictKeys: Set<string>;
@@ -986,15 +928,6 @@ type StudioTabProps = {
   entities: Entity[];
   relationships: Relationship[];
   highlightedEntityIds: Set<string>;
-  sceneDesc: string;
-  sceneDescAuto: boolean;
-  setSceneDesc: (v: string) => void;
-  sceneDims: SceneDims;
-  setSceneDims: (d: SceneDims) => void;
-  sceneJsx: string | null;
-  sceneBusy: boolean;
-  onGenerateScene: () => void;
-  DynamicScene: SceneComponent;
   question: string;
   setQuestion: (v: string) => void;
   chatHistory: ChatTurn[];
@@ -1006,8 +939,6 @@ type StudioTabProps = {
   onGenerateNarrative: () => void;
   onJumpToConflict: (id: string) => void;
   caseId: string;
-  sandboxScenarios: SandboxScenario[];
-  onGenerateCustomScenario: (hypothesis: string, answers: Record<string, string>) => Promise<any>;
 };
 
 function StudioTab(props: StudioTabProps) {
@@ -1022,15 +953,6 @@ function StudioTab(props: StudioTabProps) {
     entities,
     relationships,
     highlightedEntityIds,
-    sceneDesc,
-    sceneDescAuto,
-    setSceneDesc,
-    sceneDims,
-    setSceneDims,
-    sceneJsx,
-    sceneBusy,
-    onGenerateScene,
-    DynamicScene,
     question,
     setQuestion,
     chatHistory,
@@ -1042,8 +964,6 @@ function StudioTab(props: StudioTabProps) {
     onGenerateNarrative,
     onJumpToConflict,
     caseId,
-    sandboxScenarios,
-    onGenerateCustomScenario,
   } = props;
 
   const selectedPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1119,17 +1039,11 @@ function StudioTab(props: StudioTabProps) {
           <div className="mb-4">
             <h2 className="text-sm uppercase tracking-wider text-zinc-200 font-bold flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Virtual Crime Scene Sandbox & Scenario Testing Engine
+              Scene reconstruction &amp; scenario testing
             </h2>
-            <p className="text-[11px] text-zinc-400 mt-1">
-              Top 3 Forensically Plausible Scenarios and Officer Custom Hypothesis Builder with physical kinematics validation and optical line-of-sight checks.
-            </p>
+            <p className="text-[11px] text-zinc-400 mt-1">Hypothesis visualisation built from this case's evidence. Every element shows what it rests on; nothing here is a record of what happened.</p>
           </div>
-          <ForensicSandboxPlayer
-            scenarios={sandboxScenarios}
-            caseId={caseId}
-            onGenerateCustomScenario={onGenerateCustomScenario}
-          />
+          <ForensicSandboxPlayer caseId={caseId} />
         </div>
 
         <div className="border border-zinc-800 rounded-lg p-4">
