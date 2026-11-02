@@ -30,10 +30,46 @@ def _boom(*a, **k):
     raise AssertionError("a cloud provider was called")
 
 
-def test_default_mode_is_auto_and_keeps_hosted_chain(monkeypatch):
+def test_default_order_is_meta_then_local_then_groq_then_gemini(monkeypatch):
     monkeypatch.delenv("LLM_PROVIDER_MODE", raising=False)
     assert llm_client.provider_mode() == "auto"
-    assert [n for n, _ in llm_client.active_providers()] == ["meta", "groq", "gemini"]
+    assert [n for n, _ in llm_client.active_providers()] == ["meta", "local", "groq", "gemini"]
+
+
+def test_groq_is_reached_only_after_meta_and_local_both_fail(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER_MODE", raising=False)
+    order = []
+
+    def down(name):
+        def f(*a, **k):
+            order.append(name)
+            raise llm_client.LLMUnavailableError(f"{name} down")
+        return f
+
+    monkeypatch.setattr(llm_client, "_ALL_PROVIDERS", [("meta", down("meta")), ("local", down("local")),
+                                                       ("groq", lambda *a, **k: (order.append("groq"), '{"ok": 2}')[1]), ("gemini", _boom)])
+    res = llm_client.chat_json_ex("s", "p")
+    assert order == ["meta", "local", "groq"] and res["provider"] == "groq"
+
+
+def test_auto_falls_back_to_the_local_model_when_meta_is_down(monkeypatch, local_server):
+    monkeypatch.delenv("LLM_PROVIDER_MODE", raising=False)
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", local_server)
+    monkeypatch.setenv("LOCAL_LLM_MODEL", "llama-test-8b")
+
+    def meta_down(*a, **k):
+        raise llm_client.LLMUnavailableError("meta down")
+
+    monkeypatch.setattr(llm_client, "_ALL_PROVIDERS", [("meta", meta_down), ("local", llm_client._call_local), ("groq", _boom), ("gemini", _boom)])
+    res = llm_client.chat_json_ex("s", "p")
+    assert res["provider"] == "local" and res["model"] == "llama-test-8b"
+
+
+def test_auto_prefers_meta_and_never_touches_the_local_model_when_meta_answers(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER_MODE", raising=False)
+    monkeypatch.setattr(llm_client, "_ALL_PROVIDERS", [("meta", lambda *a, **k: '{"ok": 1}'), ("local", _boom), ("groq", _boom), ("gemini", _boom)])
+    res = llm_client.chat_json_ex("s", "p")
+    assert res["provider"] == "meta" and res["parsed"] == {"ok": 1}
 
 
 def test_unknown_mode_falls_back_to_auto(monkeypatch):
@@ -91,12 +127,12 @@ def test_local_only_uses_the_local_server_and_nothing_else(monkeypatch, local_se
     assert _Local.seen and _Local.seen[0]["model"] == "llama-test-8b"
 
 
-def test_local_only_without_a_model_name_fails_clearly(monkeypatch):
+def test_local_only_with_nothing_listening_fails_clearly(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER_MODE", "local_only")
-    monkeypatch.delenv("LOCAL_LLM_MODEL", raising=False)
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:9/v1")
     with pytest.raises(llm_client.LLMUnavailableError) as e:
         llm_client.chat("s", "p")
-    assert "LOCAL_LLM_MODEL" in str(e.value)
+    assert "local" in str(e.value)
 
 
 def test_vision_respects_the_mode(monkeypatch, tmp_path):

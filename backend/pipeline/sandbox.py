@@ -30,12 +30,14 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from db import get_conn, append_audit_event, append_audit_event_txn, verify_audit_chain
 from llm_client import chat_json_ex, chat_vision, LLMUnavailableError, provider_mode
 from pipeline import sandbox_evidence as evd
 from pipeline import sandbox_geometry as geo
+from pipeline import sandbox_fidelity as fidelity
+from pipeline import sandbox_diversity as diversity
 from pipeline.redaction import build_redactor, redaction_enabled
 
 logger = logging.getLogger("caseweave.sandbox")
@@ -56,9 +58,11 @@ DISCLAIMER = (
 class SandboxError(Exception):
     status_code = 400
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, status_code: int = 0):
         super().__init__(message)
         self.message = message
+        if status_code:
+            self.status_code = status_code
 
 
 class InsufficientEvidence(SandboxError):
@@ -181,7 +185,14 @@ _STEP_RULES = """Rules for steps:
   disturbed|moved|damaged"}]. Only give effects the evidence supports.
 - observed_by (optional): ids of cameras or witnesses the evidence says saw this step. The system checks that walls and furniture
   would really allow it.
-- item (optional): a short name for what is taken, handed over or carried.
+- sync_with (optional): {"actor": "<id>", "step": <that person's own step number, counting only their steps, starting at 1>} when this step happens
+  at the same time as, or as a direct reaction to, a step of another person: a hand-over and its receive, a witness seeing or hearing what
+  another person does, two people lifting a shutter together. The system then makes sure they are in the same moment.
+- item (optional): a short name for what is taken, handed over or carried. Give the item on the step where it is picked up, and again
+  when it is put down or handed over. When someone forces something open, name the tool in "item" if the evidence mentions one.
+- A hand_over needs a matching receive step by another person, at the same place and time. A person who lie_down must stand or sit
+  before any later movement. A person whose own position is given among the LOCATIONS (a witness position or camera) should use
+  that id, not "exterior". Use "exterior" only for someone whose position outside the evidence does not give.
 - Never give clock times; the system takes times from the evidence you cite."""
 
 SCENARIO_SYSTEM_PROMPT = f"""You are a forensic scenario analyst for CaseWeave, an investigation-support tool used by police.
@@ -205,8 +216,21 @@ Respond with ONLY one JSON object: {{"scenarios": [ ...3 objects... ]}}. Each sc
 - actors: as above
 - supporting_facts: array of {{"text": "", "refs": ["<id>"]}}
 - contradicted_points: array of {{"text": "", "refs": ["<id>"]}}: facts that weaken this account, or open questions
+- differs_by: one short sentence saying what is different about this scenario compared with the others
+- less_supported: true only if this scenario takes an alternative that the evidence supports less well than the main reading, else false
 - steps: array of {{"actor", "node_id", "action", "narrative": "one sentence", "dt_sec_estimate", "phase": "short label", "item", "evidence_refs", "effects", "observed_by"}}
 No prose outside the JSON, no markdown."""
+
+REPAIR_SYSTEM_PROMPT = f"""You are repairing ONE candidate scenario for CaseWeave, a police investigation-support tool. A checker found logical or physical
+problems in it. Fix exactly those problems and change nothing else: keep the same story, the same people, the same position on the open questions
+and the same "differs_by". Do not add people, places or facts the evidence does not give. If a problem cannot be fixed without contradicting the
+evidence or changing the story, leave that part as it is.
+{_DATA_RULE}
+
+{_STEP_RULES}
+
+Respond with ONLY one JSON object with the same keys as the scenario you were given (title, hypothesis_summary, plausibility_estimate, actors,
+supporting_facts, contradicted_points, steps, differs_by, less_supported). No prose outside the JSON."""
 
 INTERVIEW_SYSTEM_PROMPT = f"""You are a senior forensic examiner helping an officer test their own theory of an incident.
 {_DATA_RULE}
@@ -322,6 +346,55 @@ def _scenario_context(ev: Dict[str, Any], officer_times: Optional[List[int]] = N
             "officer_times": officer_times or [], "narrative": narrative}
 
 
+ALIGN_MIN_SPREAD_S = 120      # people whose evidence clocks disagree by less than this are left alone
+ALIGN_MAX_SHIFT_S = 6 * 3600
+
+
+def _align_on_clock(steps_in: List[Any], actors_raw: List[dict], layout: Dict[str, Any], ev: Dict[str, Any]) -> Tuple[List[dict], Dict[str, Any]]:
+    """Puts every person's timeline on the evidence clock. Each person's steps start from zero unless told otherwise, so a witness who hears
+    the break-in at 02:21 and a suspect who arrives at 02:23 would otherwise be drawn an hour apart. Where the steps of two or more people
+    cite timed evidence, each person is moved so that their cited times agree with everyone else's. People with no timed evidence are not moved."""
+    info: Dict[str, Any] = {"applied": False, "shifts": {}, "reference": None, "unaligned": []}
+    if len(actors_raw) < 2:
+        return actors_raw, info
+    plan = geo.plan_scenario(steps_in, layout, actors_raw)
+    if not plan.get("actors"):
+        return actors_raw, info
+    obs = {o["observation_id"]: o for o in ev["observations"]}
+    origins: Dict[str, List[float]] = {}
+    for a in plan["actors"]:
+        for st in a["steps"]:
+            secs = []
+            for r in st["evidence_refs"]:
+                o = obs.get(r)
+                c = evd.parse_clock(o.get("extracted_time"), o.get("time_claim")) if o else None
+                if c:
+                    secs.append(c["sod"])
+            if secs:
+                origins.setdefault(a["id"], []).append(min(secs) - st["arrive_s"])
+    if len(origins) < 2:
+        return actors_raw, info
+    med = {aid: sum(v) / len(v) for aid, v in origins.items()}   # the average, so one oddly timed step does not decide where a person goes
+    if max(med.values()) - min(med.values()) < ALIGN_MIN_SPREAD_S:
+        return actors_raw, info
+    ref = max(origins, key=lambda k: (len(origins[k]), -list(origins).index(k)))
+    delta = {aid: med[aid] - med[ref] for aid in med}          # + means this person starts later than the reference
+    low = min(delta.values())
+    shift = {aid: d - min(0.0, low) for aid, d in delta.items()}  # nobody starts before time zero
+    out = []
+    for a in actors_raw:
+        aid = geo.normalize_id(a.get("id"))
+        a2 = dict(a)
+        if aid in shift:
+            new = geo.to_float(a.get("start_offset_s"), 0.0) or 0.0
+            a2["start_offset_s"] = max(0.0, min(ALIGN_MAX_SHIFT_S, new + shift[aid]))
+        out.append(a2)
+    label = {a["id"]: a["label"] for a in plan["actors"]}
+    info.update({"applied": True, "shifts": {label.get(k, k): round(v, 1) for k, v in shift.items() if abs(v) > 1.0}, "reference": label.get(ref, ref),
+                 "unaligned": [label.get(a["id"], a["id"]) for a in plan["actors"] if a["id"] not in origins]})
+    return out, info
+
+
 def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not isinstance(raw, dict):
         return None
@@ -339,6 +412,7 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
             removed_refs += len(invalid)
             st = {**st, "evidence_refs": valid}
         steps_in.append(st)
+    actors_raw, alignment = _align_on_clock(steps_in, actors_raw, layout, ev)
     plan = geo.plan_scenario(steps_in, layout, actors_raw)
     if not plan["ok"]:
         return None
@@ -389,7 +463,13 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
     texts += [st["narrative"] for st in scoring_steps] + [f["text"] for f in supporting + contradicted]
     bad_times = sorted({t for tx in texts for t in evd.time_mentions_unsupported(tx, cited_secs)})
     disputed_hits = sorted(r for r in all_refs if r in ctx["disputed"])
-    warnings = list(validation["warnings"]) + door_warnings + list(anchors["cross_source_notes"]) + list(anchors["cross_person_notes"])
+    fid = fidelity.check(steps_in, actors_raw, plan, layout, ev, texts, all_refs)
+    violations += fid["violations"]
+    warnings = list(fid["warnings"]) + list(validation["warnings"]) + door_warnings + list(anchors["cross_source_notes"]) + list(anchors["cross_person_notes"])
+    if alignment["applied"]:
+        moved = ", ".join(f"{k} by {v / 60:.0f} min" for k, v in alignment["shifts"].items())
+        warnings.append(f"The people's timelines were put on the evidence clock so that what they cite agrees (moved: {moved or 'none'}; reference: {alignment['reference']})."
+                        + (f" No timed evidence for {', '.join(alignment['unaligned'])}, so they were not moved." if alignment["unaligned"] else ""))
     if bad_times:
         warnings.append("The text mentions clock time(s) " + ", ".join(bad_times) + " that none of the cited evidence gives.")
     for r in disputed_hits:
@@ -406,7 +486,7 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
         hard_violations=len(violations), observation_ids=ctx["obs_ids"],
         cautions={"door_state": len(door_warnings), "cross_source_time": len(anchors["cross_source_notes"]), "cross_person_clock": len(anchors["cross_person_notes"]),
                   "unsupported_time_mentions": len(bad_times), "disputed_sources": len(disputed_hits), "weak_citations": len(weak_list),
-                  "officer_time_differs": anchors["officer_differs"]},
+                  "officer_time_differs": anchors["officer_differs"], **fid["caution_counts"]},
     )
     cited_all = set(all_refs) | {a["observation_id"] for a in anchors["anchors"]}
     scenario_text = " ".join(texts + [st["label"] for st in scoring_steps])
@@ -426,8 +506,68 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
         "weak_citations": weak_list, "unsupported_time_mentions": bad_times, "disputed_citations": disputed_hits, "citations_removed": removed_refs,
         "narrative_consistency": evd.narrative_consistency(ctx.get("narrative"), scenario_text),
         "evidence_index": evd.build_evidence_index(ev, cited_all),
+        "fidelity": fid["report"], "coverage": fid["coverage"],
+        "differs_by": geo.clean_text(raw.get("differs_by"), 200), "less_supported": bool(raw.get("less_supported")), "time_alignment": alignment, "sync": plan.get("sync"),
         "steps_input": steps_in, "actors_input": actors_raw, "engine_version": geo.ENGINE_VERSION,
     }
+
+
+# problems the model can fix by rewriting steps; time conflicts with the evidence are NOT in this list, because
+# an alternative that cannot be squared with the evidence clocks should stay visibly flagged, not be bent to fit
+_REPAIRABLE = {"handover_apart", "locked_door_passed", "no_route", "unreachable", "path_blocked", "stop_blocked", "not_visible", "discontinuous"}
+MAX_REPAIRS = 2
+
+
+def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], ev: Dict[str, Any], ctx: Dict[str, Any], redactor, meta: Dict[str, Any],
+                      run_id: str, case_id: str, locations: str, context: str) -> List[Dict[str, Any]]:
+    """One repair attempt for scenarios whose problems are of a kind a rewrite can fix."""
+    done = 0
+    out = []
+    log = meta.setdefault("repairs", [])
+    for s in scenarios:
+        problems = [v for v in s["validation"]["violations"] if v["code"] in _REPAIRABLE]
+        if not problems or done >= MAX_REPAIRS:
+            out.append(s)
+            continue
+        done += 1
+        raw = _scenario_raw_from_content(s)
+        prompt = (f"Case ID: {case_id}\n\n{context}\n\n{locations}\n\nThe scenario to repair:\n{json.dumps(raw, default=str)[:12000]}\n\n"
+                  "Problems the checker found (fix these):\n" + "\n".join(f"- {v['message']}" for v in problems[:8]) +
+                  "\n\nReturn the corrected scenario.")
+        entry = {"scenario": s["title"][:80], "problems": [v["message"][:160] for v in problems[:8]], "fixed": False}
+        try:
+            call = _call_model(REPAIR_SYSTEM_PROMPT, prompt, 8192, "repair", redactor)
+            meta["calls"].append(call["meta"])
+            rebuilt = _build_scenario(call["parsed"], layout, ev, ctx) if isinstance(call["parsed"], dict) else None
+        except ModelFailure:
+            rebuilt = None
+        if rebuilt is not None:
+            left = [v for v in rebuilt["validation"]["violations"] if v["code"] in _REPAIRABLE]
+            if len(left) < len(problems):
+                rebuilt["branch"] = s.get("branch")
+                new = _finish_scenario(rebuilt, run_id=run_id, case_id=case_id, scenario_type="automated", provenance=s["provenance"])
+                new["repair"] = {"problems_found": entry["problems"], "problems_left": len(left)}
+                entry["fixed"] = True
+                entry["problems_left"] = len(left)
+                s = new
+        log.append(entry)
+        out.append(s)
+    return out
+
+
+def _annotate_diversity(scenarios: List[Dict[str, Any]], layout: Dict[str, Any]) -> None:
+    """How different each scenario is from the others, in what ways, and whether it is the best-supported reading or an alternative."""
+    if len(scenarios) < 2:
+        for s in scenarios:
+            s["diversity"] = {"nearest_distance": None, "compared_with": []}
+        return
+    pairs = diversity.pairwise(scenarios, layout)
+    for i, s in enumerate(scenarios):
+        mine = [{"scenario_id": scenarios[p["b" if p["a"] == i else "a"]]["scenario_id"], "rank": scenarios[p["b" if p["a"] == i else "a"]]["rank"],
+                 "distance": p["distance"], "differs_in": p["differs_in"], "too_similar": p["too_similar"]} for p in pairs if i in (p["a"], p["b"])]
+        s["diversity"] = {"nearest_distance": min(m["distance"] for m in mine), "compared_with": mine}
+        flips = (s.get("branch") or {}).get("asked_to_decide") or []
+        s["support_level"] = "less_supported" if s.get("less_supported") else ("alternative" if flips else "best_supported")
 
 
 def _finish_scenario(content: Dict[str, Any], *, run_id: str, case_id: str, scenario_type: str, provenance: Dict[str, Any]) -> Dict[str, Any]:
@@ -442,7 +582,8 @@ def _scenario_raw_from_content(c: Dict[str, Any]) -> Dict[str, Any]:
     return {"title": c.get("title"), "hypothesis_summary": c.get("hypothesis_summary"), "plausibility_estimate": c.get("plausibility_estimate"),
             "supporting_facts": [{"text": f["text"], "refs": f["refs"] + f.get("invalid_refs", [])} for f in c.get("supporting_facts", [])],
             "contradicted_points": [{"text": f["text"], "refs": f["refs"] + f.get("invalid_refs", [])} for f in c.get("contradicted_points", [])],
-            "steps": c.get("steps_input", []), "actors": c.get("actors_input", [])}
+            "steps": c.get("steps_input", []), "actors": c.get("actors_input", []),
+            "differs_by": c.get("differs_by", ""), "less_supported": c.get("less_supported", False)}
 
 
 # --------------------------------------------------------------------------
@@ -568,10 +709,14 @@ def run_generation(run_id: str, case_id: str, user: Dict[str, Any], mode: str = 
 
         layout_hash = evd.canonical_hash({k: v for k, v in layout.items() if k != "source"})
         locations = _locations_context(layout)
-        prompt = f"Case ID: {case_id}\n\n{context}\n\n{locations}\n\nPropose the 3 scenarios."
+        axes = diversity.open_questions(layout, ev)
+        assignment = diversity.assign_branches(axes)
+        meta["open_questions"] = [{"key": x["key"], "question": x["question"][:200], "options": [{"id": o["id"], "support": o["support"]} for o in x["options"]]} for x in axes]
+        prompt = f"Case ID: {case_id}\n\n{context}\n\n{locations}\n\n{diversity.brief_text(axes, assignment)}\n\nPropose the 3 scenarios."
         scenarios: List[Dict[str, Any]] = []
         failure_note = ""
-        for attempt in range(2):
+        best_dupes = None
+        for attempt in range(3):
             p = prompt + (f"\n\nYour previous answer could not be used ({failure_note}). Follow the output format exactly." if failure_note else "")
             call = _call_model(SCENARIO_SYSTEM_PROMPT, p, 8192, f"scenarios_attempt_{attempt + 1}", redactor)
             meta["calls"].append(call["meta"])
@@ -580,19 +725,33 @@ def run_generation(run_id: str, case_id: str, user: Dict[str, Any], mode: str = 
             if not isinstance(raw_list, list):
                 failure_note = "it was not a list of scenarios"
                 continue
-            built = [b for b in (_build_scenario(r, layout, ev, ctx) for r in raw_list[:3]) if b]
+            built = []
+            for i, r in enumerate(raw_list[:3]):
+                b_ = _build_scenario(r, layout, ev, ctx)
+                if b_:
+                    b_["branch"] = {"scenario": i + 1, "asked_to_decide": [{"question": f["question"][:160], "option": f["option"]["text"][:160]} for f in (assignment[i]["flips"] if i < len(assignment) else [])]}
+                    built.append(b_)
             if not built:
                 failure_note = "none of the scenarios had two or more usable steps at the listed places"
                 continue
+            dupes = diversity.near_duplicates(built, layout) if len(built) > 1 else []
             prov = {"provider": call["provider"], "model": call["model"], "prompt_hash": call["meta"]["prompt_hash"], "layout_hash": layout_hash,
                     "engine_version": geo.ENGINE_VERSION, "redacted": call["meta"]["redacted"]}
-            scenarios = [_finish_scenario(b, run_id=run_id, case_id=case_id, scenario_type="automated", provenance=prov) for b in built]
-            break
+            if best_dupes is None or len(dupes) < best_dupes:
+                best_dupes = len(dupes)
+                scenarios = [_finish_scenario(b_, run_id=run_id, case_id=case_id, scenario_type="automated", provenance=prov) for b_ in built]
+            meta["diversity_attempts"] = meta.get("diversity_attempts", []) + [{"attempt": attempt + 1, "scenarios": len(built), "near_duplicate_pairs": len(dupes)}]
+            if not dupes:
+                break
+            failure_note = ""
+            prompt = prompt + "\n\n" + diversity.repair_note(dupes, axes)
         if not scenarios:
             raise ModelFailure(f"The model did not produce usable scenarios ({failure_note}).")
+        scenarios = _repair_scenarios(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)
         scenarios.sort(key=lambda s: (-s["score"]["verifiable_score"], -s["plausibility_estimate"]))
         for i, s in enumerate(scenarios):
             s["rank"] = i + 1
+        _annotate_diversity(scenarios, layout)
         layout_ids: set = set()
         for n in geo.all_nodes(layout):
             layout_ids |= set(n.get("evidence_refs", []))

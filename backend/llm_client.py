@@ -138,9 +138,7 @@ def _call_local(system: str, prompt: str, max_tokens: int, timeout: int = 120) -
     """A model running on this machine or on the department's own server, through any
     OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp). Nothing leaves the premises."""
     base = os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:11434/v1").strip().rstrip("/")
-    model = os.environ.get("LOCAL_LLM_MODEL", "").strip()
-    if not model:
-        raise LLMUnavailableError("LOCAL_LLM_MODEL not set")
+    model = os.environ.get("LOCAL_LLM_MODEL", "llama3.1:8b").strip() or "llama3.1:8b"
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
@@ -159,17 +157,18 @@ def _call_local(system: str, prompt: str, max_tokens: int, timeout: int = 120) -
     return content
 
 
-_ALL_PROVIDERS = [
+_ALL_PROVIDERS = [  # the order is the fallback order
     ("meta", _call_meta),
+    ("local", _call_local),
     ("groq", _call_groq),
     ("gemini", _call_gemini),
-    ("local", _call_local),
 ]
 
 
 def provider_mode() -> str:
-    """auto: Meta, then the other hosted providers (the long-standing behaviour).
-    meta_only: only Meta's hosted models. local_only: only a model on this network."""
+    """auto (default): Meta's hosted models first; if Meta cannot answer, the local model on this network (Ollama);
+    if that is not available either, Groq, then Gemini.
+    meta_only: only Meta's hosted models. local_only: only the local model."""
     m = os.environ.get("LLM_PROVIDER_MODE", "auto").strip().lower()
     return m if m in ("auto", "meta_only", "local_only") else "auto"
 
@@ -181,11 +180,11 @@ def active_providers():
     elif mode == "local_only":
         names = {"local"}
     else:
-        names = {"meta", "groq", "gemini"}
+        names = {"meta", "local", "groq", "gemini"}
     return [(n, f) for n, f in _ALL_PROVIDERS if n in names]
 
 
-PROVIDERS = [(n, f) for n, f in _ALL_PROVIDERS if n != "local"]  # kept for older callers; chat() uses active_providers()
+PROVIDERS = [(n, f) for n, f in _ALL_PROVIDERS if n in ("meta", "groq", "gemini")]  # kept for older callers; chat() uses active_providers()
 
 
 def _call_meta_vision(system: str, prompt: str, image_b64: str, mime_type: str, max_tokens: int) -> str:
@@ -284,6 +283,31 @@ def chat_vision(system: str, prompt: str, image_path, max_tokens: int = 2048) ->
     )
 
 
+def chat_vision_multi(system: str, prompt: str, images: list, max_tokens: int = 2048, timeout: int = 180) -> tuple[str, str]:
+    """Several pictures in one question. images: [(png_or_jpeg_bytes, mime_type)]. Only Meta's hosted vision model
+    takes part, and only if the provider mode allows Meta; a text-only local model cannot look at pictures."""
+    import base64
+
+    if "meta" not in {n for n, _ in active_providers()}:
+        raise LLMUnavailableError(f"no vision-capable provider is allowed in {provider_mode()} mode")
+    api_key = os.environ.get("META_API_KEY", "").strip()
+    base_url = os.environ.get("META_API_BASE_URL", "https://api.meta.ai/v1").strip()
+    if not api_key:
+        raise LLMUnavailableError("META_API_KEY not set")
+    content = [{"type": "input_text", "text": f"{system}\n\n{prompt}"}]
+    for data, mime in images:
+        content.append({"type": "input_image", "image_url": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"})
+    payload = {"model": "muse-wonder-1.0", "input": [{"role": "user", "content": content}], "reasoning": {"effort": "high"}}
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    result = _post_json(f"{base_url}/responses", headers, payload, timeout=timeout, retries=2)
+    for item in result.get("output", []):
+        if item.get("type") == "message":
+            for block in item.get("content", []):
+                if block.get("type") == "output_text":
+                    return "meta", block["text"]
+    raise LLMUnavailableError(f"Meta vision response had no message/output_text block: {str(result)[:200]}")
+
+
 def chat_vision_json(system: str, prompt: str, image_path, max_tokens: int = 2048) -> tuple[str, dict]:
     provider, text = chat_vision(system, prompt, image_path, max_tokens)
     cleaned = text.strip()
@@ -342,7 +366,7 @@ def model_id(provider: str) -> str:
     if provider == "gemini":
         return os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash").strip()
     if provider == "local":
-        return os.environ.get("LOCAL_LLM_MODEL", "local").strip()
+        return os.environ.get("LOCAL_LLM_MODEL", "llama3.1:8b").strip() or "llama3.1:8b"
     return provider
 
 

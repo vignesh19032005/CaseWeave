@@ -266,6 +266,12 @@ export interface Scenario {
   unsupported_time_mentions: string[];
   disputed_citations: string[];
   citations_removed: number;
+  differs_by?: string;
+  less_supported?: boolean;
+  support_level?: "best_supported" | "alternative" | "less_supported";
+  diversity?: { nearest_distance: number | null; compared_with: { scenario_id: string; rank: number | null; distance: number; differs_in: string[]; too_similar: boolean }[] };
+  fidelity?: { steps_given: number; steps_in_simulation: number; steps_not_placed: number; effects_expected: number; effects_in_simulation: number; people_listed: number; people_shown: number; round_trip_ok: boolean };
+  coverage?: { key_observations: number; key_used: number; key_unused: string[]; people_not_covered: string[] };
   narrative_consistency: { available: boolean; note?: string; facts_total?: number; facts_not_reflected?: string[] };
   evidence_index: Record<string, EvidenceEntry>;
   provenance: { provider: string; model: string; prompt_hash: string; layout_hash: string; engine_version?: string; redacted?: boolean; replanned_from?: string };
@@ -347,4 +353,41 @@ export interface PhotoLinks {
     terms: { node_id: string; label: string; term: string }[];
     calls: number; calls_failed: number; detector: string; basis: string; caveat: string;
   };
+}
+
+export interface ReviewFinding {
+  severity: "problem" | "concern" | "note";
+  type: string;
+  step: number | null;
+  person: string | null;
+  frames: string[];
+  evidence_refs: string[];
+  text: string;
+  suggested_fix: string;
+}
+export interface ScenarioReview {
+  scenario_id: string;
+  title: string;
+  verdict: "problems" | "concerns" | "notes_only" | "nothing_found" | "not_reviewed";
+  findings: ReviewFinding[];
+  dropped_findings: number;
+  frames: { id: string; kind: string; t: number; reason: string }[];
+  frame_files: Record<string, string>;
+  batches: number;
+  batches_failed: number;
+  reviewed_with_images: boolean;
+  photos_sent: number;
+  provider: string | null;
+  model: string | null;
+  seconds: number;
+  note: string;
+}
+export interface SandboxReview {
+  review_id: string | null;
+  status: "none" | "running" | "done" | "failed";
+  message?: string;
+  created_by?: string;
+  created_at?: string;
+  stale?: boolean;
+  content: null | { reviewed_with_images: boolean; provider_mode: string; scenarios: ScenarioReview[] };
 }

@@ -66,7 +66,7 @@ type Relationship = { from_entity_id: string; to_entity_id: string; relationship
 type Mention = { entity_id: string; observation_id: string };
 type AuditEvent = { audit_id: string; actor_role: string; action: string; target: string; timestamp: string };
 type ChatSource = { observation_id: string; source_evidence_id: string; extracted_time: string; text: string };
-type ChatTurn = { question: string; answer: string; sources: ChatSource[] };
+type ChatTurn = { question: string; answer: string | null; sources: ChatSource[]; error?: string };
 type UnresolvedGap = {
   question: string;
   best_guess: string | null;
@@ -140,6 +140,15 @@ function CaseStudio() {
   const [question, setQuestion] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
+  // the conversation is kept across page reloads (per case, in this browser only); it is restored when the case loads
+  useEffect(() => {
+    try {
+      const done = chatHistory.filter((t) => t.answer);
+      if (done.length) window.localStorage.setItem(`cw_chat_${caseId}`, JSON.stringify(done));
+    } catch {
+      // storage unavailable: the conversation just is not remembered
+    }
+  }, [chatHistory, caseId]);
 
   const [reportText, setReportText] = useState<string | null>(null);
 
@@ -165,7 +174,18 @@ function CaseStudio() {
       setError(e instanceof ApiError ? e.message : "Could not load case");
       return;
     }
+    restoreChat();
     refreshDerived();
+  }
+
+  function restoreChat() {
+    try {
+      const raw = window.localStorage.getItem(`cw_chat_${caseId}`);
+      const saved = raw ? (JSON.parse(raw) as ChatTurn[]) : [];
+      if (Array.isArray(saved) && saved.length) setChatHistory((prev) => (prev.length ? prev : saved.filter((t) => t && typeof t.question === "string" && t.answer)));
+    } catch {
+      // storage unavailable: start empty
+    }
   }
 
   async function refreshDerived() {
@@ -293,16 +313,15 @@ function CaseStudio() {
     setChatBusy(true);
     setError("");
     setQuestion("");
+    // earlier answered turns are remembered by the model; the new question shows at once as a message of its own
+    const earlier = chatHistory.filter((t) => t.answer).map((t) => ({ question: t.question, answer: t.answer as string }));
+    setChatHistory((prev) => [...prev.filter((t) => !t.error), { question: q, answer: null, sources: [] }]);
     try {
-      const result = await api.askCase(
-        caseId,
-        q,
-        chatHistory.map((t) => ({ question: t.question, answer: t.answer }))
-      );
-      setChatHistory((prev) => [...prev, { question: q, answer: result.answer, sources: result.sources }]);
+      const result = await api.askCase(caseId, q, earlier);
+      setChatHistory((prev) => prev.map((t, i) => (i === prev.length - 1 ? { question: q, answer: result.answer, sources: result.sources } : t)));
     } catch (e) {
-      setQuestion(q); // let them retry without retyping
-      setError(e instanceof ApiError ? e.message : "Chat failed");
+      const msg = e instanceof ApiError ? e.message : "The answer could not be produced. Try again.";
+      setChatHistory((prev) => prev.map((t, i) => (i === prev.length - 1 ? { question: q, answer: null, sources: [], error: msg } : t)));
     } finally {
       setChatBusy(false);
     }
@@ -419,7 +438,14 @@ function CaseStudio() {
             chatHistory={chatHistory}
             chatBusy={chatBusy}
             onAsk={askQuestion}
-            onNewConversation={() => setChatHistory([])}
+            onNewConversation={() => {
+              setChatHistory([]);
+              try {
+                window.localStorage.removeItem(`cw_chat_${caseId}`);
+              } catch {
+                // nothing stored to clear
+              }
+            }}
             narrative={narrative}
             narrativeBusy={narrativeBusy}
             onGenerateNarrative={generateNarrative}
@@ -967,6 +993,10 @@ function StudioTab(props: StudioTabProps) {
   } = props;
 
   const selectedPanelRef = useRef<HTMLDivElement | null>(null);
+  const chatEnd = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ block: "end" });
+  }, [chatHistory]);
   useEffect(() => {
     if (selectedEventId) {
       selectedPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1150,25 +1180,38 @@ function StudioTab(props: StudioTabProps) {
           </div>
 
           {chatHistory.length > 0 && (
-            <div className="space-y-4 mb-3 max-h-80 overflow-y-auto pr-2">
+            <div className="space-y-3 mb-3 max-h-96 overflow-y-auto pr-2" data-testid="chat-thread">
               {chatHistory.map((turn, i) => (
-                <div key={i} className="text-xs">
-                  <div className="text-zinc-200 font-medium mb-1">{turn.question}</div>
-                  <div className="text-zinc-400 whitespace-pre-wrap">{turn.answer}</div>
-                  {turn.sources?.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {turn.sources.map((s) => (
-                        <div key={s.observation_id} className="border-l-2 border-zinc-800 pl-2 text-zinc-500">
-                          <span className="text-zinc-600">
-                            {s.extracted_time || "—"} · {s.source_evidence_id}
-                          </span>
-                          <div className="text-zinc-500">{s.text}</div>
+                <div key={i} className="space-y-1.5">
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-lg rounded-br-sm bg-indigo-600/80 text-white text-xs px-3 py-2 whitespace-pre-wrap" data-testid="chat-question">{turn.question}</div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="max-w-[92%] rounded-lg rounded-bl-sm bg-zinc-900 border border-zinc-800 text-xs px-3 py-2" data-testid="chat-answer">
+                      {turn.error ? (
+                        <div className="text-red-400">{turn.error}</div>
+                      ) : turn.answer === null ? (
+                        <div className="text-zinc-500 italic">Thinking…</div>
+                      ) : (
+                        <div className="text-zinc-300 whitespace-pre-wrap">{turn.answer}</div>
+                      )}
+                      {turn.sources?.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {turn.sources.map((s) => (
+                            <div key={s.observation_id} className="border-l-2 border-zinc-700 pl-2 text-zinc-500">
+                              <span className="text-zinc-600">
+                                {s.extracted_time || "—"} · {s.source_evidence_id}
+                              </span>
+                              <div className="text-zinc-500">{s.text}</div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               ))}
+              <div ref={chatEnd} />
             </div>
           )}
 

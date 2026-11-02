@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import type { Basis, EditOp, EvidenceEntry, InspectedItem, Layout, PhotoLinks, Scenario } from "./sandboxTypes";
+import type { Basis, EditOp, EvidenceEntry, InspectedItem, Layout, PhotoLinks, SandboxReview, Scenario } from "./sandboxTypes";
 
 export const BASIS_STYLE: Record<Basis | "derived", string> = {
   stated: "bg-emerald-950 text-emerald-300 border-emerald-800",
@@ -110,6 +110,8 @@ export function ComparisonMatrix({ scenarios, activeId, onPick, overlay, setOver
 }) {
   if (scenarios.length < 2) return null;
   const rows: [string, (s: Scenario) => React.ReactNode][] = [
+    ["Reading", (s) => (s.support_level === "less_supported" ? <span className="text-amber-300">less supported possibility</span> : s.support_level === "alternative" ? <span className="text-sky-300">alternative reading</span> : <span className="text-emerald-300">best supported</span>)],
+    ["Differs by", (s) => <span className="text-zinc-400 whitespace-normal">{s.differs_by || "—"}</span>],
     ["Evidence score", (s) => <span className="font-mono">{s.score.verifiable_score}</span>],
     ["Physically consistent", (s) => (s.validation.is_physically_possible ? <span className="text-emerald-400">yes</span> : <span className="text-red-400">{s.validation.violations.length} problem(s)</span>)],
     ["People", (s) => s.plan.actors.length],
@@ -379,6 +381,117 @@ export function PhotoEvidence({ caseId, links, selectedId, canCreate, busy, onCr
       {canCreate && (
         <button disabled={busy} onClick={onCreate} className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-[11px] font-semibold">
           {busy ? "Searching the photographs…" : content ? "Search the photographs again" : "Find objects in the photographs"}
+        </button>
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- the second model's review
+
+const SEV_STYLE: Record<string, string> = {
+  problem: "border-red-800 bg-red-950/40 text-red-200",
+  concern: "border-amber-800 bg-amber-950/30 text-amber-200",
+  note: "border-zinc-700 bg-zinc-900 text-zinc-300",
+};
+const VERDICT_TEXT: Record<string, string> = {
+  problems: "The reviewer found problems",
+  concerns: "The reviewer has concerns",
+  notes_only: "Only minor notes",
+  nothing_found: "The reviewer found nothing it could point at",
+  not_reviewed: "Could not be reviewed",
+};
+
+function FrameThumb({ caseId, reviewId, name, label }: { caseId: string; reviewId: string; name: string; label: string }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!open || url) return;
+    let made: string | null = null;
+    let cancelled = false;
+    api.reviewFrameUrl(caseId, reviewId, name).then((u: string) => {
+      if (cancelled) URL.revokeObjectURL(u);
+      else { made = u; setUrl(u); }
+    }).catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; if (made && !url) URL.revokeObjectURL(made); };
+  }, [open, url, caseId, reviewId, name]);
+  return (
+    <span>
+      <button onClick={() => setOpen(!open)} className={`px-1.5 py-0.5 rounded border text-[10px] font-mono ${open ? "bg-indigo-900 border-indigo-600 text-indigo-100" : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"}`}>{label}</button>
+      {open && (
+        <div className="mt-1.5 border border-zinc-700 rounded overflow-hidden bg-black" data-testid="review-frame">
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt={`plan view ${label}`} className="w-full block" />
+          ) : (
+            <div className="h-16 flex items-center justify-center text-[10px] text-zinc-500">{failed ? "picture not available" : "loading…"}</div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+export function ReviewPanel({ caseId, review, scenarioId, evidenceIndex, canStart, busy, onStart }: {
+  caseId: string; review: SandboxReview | null; scenarioId: string; evidenceIndex: Record<string, EvidenceEntry>; canStart: boolean; busy: boolean; onStart: () => void;
+}) {
+  const mine = review?.content?.scenarios.find((s) => s.scenario_id === scenarioId) ?? null;
+  const running = review?.status === "running";
+  return (
+    <Section title="Second-model review" tone={mine?.verdict === "problems" ? "bad" : mine?.verdict === "concerns" ? "warn" : "default"}>
+      {!review || review.status === "none" ? (
+        <p className="text-[11px] text-zinc-500">A second model can read this scenario next to the evidence it cites, the case photographs and plan-view pictures of the scene at about two dozen moments, and say what does not fit. It is an opinion, checked only for whether each point refers to something real.</p>
+      ) : running ? (
+        <p className="text-[11px] text-sky-300 animate-pulse">The reviewer is reading the scenarios and looking at the pictures. This takes a few minutes; you can keep working.</p>
+      ) : review.status === "failed" ? (
+        <p className="text-[11px] text-red-300">The review could not be completed. {review.message}</p>
+      ) : !mine ? (
+        <p className="text-[11px] text-zinc-500">This scenario was not part of the last review.</p>
+      ) : (
+        <div className="space-y-2">
+          {review.stale && <p className="text-[11px] text-orange-300">The scene has been rebuilt since this review. Run it again.</p>}
+          <div className="text-[11px] text-zinc-300">
+            <b>{VERDICT_TEXT[mine.verdict]}</b>
+            <span className="text-zinc-500"> · {mine.frames.length} pictures{mine.photos_sent ? ` and ${mine.photos_sent} photographs` : ""} · {mine.reviewed_with_images ? "looked at the pictures" : "text only, no pictures"}{mine.model ? ` · ${mine.model}` : ""}</span>
+          </div>
+          {mine.batches_failed > 0 && <p className="text-[11px] text-amber-300">{mine.batches_failed} of {mine.batches} parts of the review failed, so it may be incomplete.</p>}
+          {mine.findings.map((f, i) => (
+            <div key={i} className={`border rounded p-2 text-[11px] space-y-1 ${SEV_STYLE[f.severity] ?? SEV_STYLE.note}`} data-testid="review-finding">
+              <div className="flex flex-wrap gap-1.5 items-center text-[10px] uppercase tracking-wide opacity-80">
+                <span>{f.severity}</span><span>· {f.type.replace(/_/g, " ")}</span>{f.step !== null && <span>· step {f.step}</span>}{f.person && <span>· {f.person}</span>}
+              </div>
+              <div className="leading-relaxed">{f.text}</div>
+              {f.suggested_fix && <div className="opacity-80">Suggested: {f.suggested_fix}</div>}
+              {f.evidence_refs.length > 0 && <RefChips refs={f.evidence_refs} index={evidenceIndex} />}
+              {f.frames.length > 0 && review.review_id && (
+                <div className="flex flex-wrap gap-1.5">
+                  {f.frames.map((fid) => (mine.frame_files[fid] ? <FrameThumb key={fid} caseId={caseId} reviewId={review.review_id as string} name={mine.frame_files[fid]} label={fid} /> : null))}
+                </div>
+              )}
+            </div>
+          ))}
+          {mine.findings.length === 0 && <p className="text-[11px] text-zinc-400">Nothing was reported that points at a real step, picture or piece of evidence. That is not proof the scenario is right.</p>}
+          {mine.dropped_findings > 0 && <p className="text-[10px] text-zinc-500">{mine.dropped_findings} point(s) were dropped because they referred to nothing that exists.</p>}
+          <p className="text-[10px] text-zinc-500">{mine.note}</p>
+          {mine.frames.length > 0 && review.review_id && (
+            <details className="text-[10px] text-zinc-500">
+              <summary className="cursor-pointer">All {mine.frames.length} pictures the reviewer was shown</summary>
+              <div className="mt-1 space-y-1">
+                {mine.frames.map((fr) => (
+                  <div key={fr.id} className="flex gap-2 items-start">
+                    {mine.frame_files[fr.id] && <FrameThumb caseId={caseId} reviewId={review.review_id as string} name={mine.frame_files[fr.id]} label={fr.id} />}
+                    <span>{fr.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+      {canStart && !running && (
+        <button disabled={busy} onClick={onStart} className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-[11px] font-semibold">
+          {busy ? "Starting…" : review && review.status === "done" ? "Review again" : "Review with a second model"}
         </button>
       )}
     </Section>

@@ -581,3 +581,28 @@ def test_shelf_running_across_a_door_is_cut_back_not_left_blocking():
     shelf = next(f for f in lay["fixtures"] if f["id"] == "dispensary_shelving")
     assert shelf["adjusted"] and any("cut back" in n for n in shelf["adjust_notes"])
     assert any("dispensary_shelving" in w and "cut back" in w for w in lay["warnings"])
+
+
+def test_a_witness_with_a_known_position_stands_there_not_at_the_nearest_door():
+    """'Outside' for a person whose own position is in the evidence must mean that position. A real run drew
+    a watchman at a kiosk 20 m away standing right beside the intruder at the rear door."""
+    raw = {"rooms": [{"id": "shop", "width_m": 8, "length_m": 6}],
+           "entry_points": [{"id": "rear", "room": "shop", "wall": "north", "position_frac": 0.5, "width_m": 1.5, "state": "forced"}],
+           "observers": [{"id": "witness_person_8", "kind": "witness", "room": "outside", "label": "K. Sundaram night watchman at main security kiosk",
+                          "near": "rear", "distance_m": 22, "lateral_m": -9, "fov_deg": 120, "range_m": 30}]}
+    lay = sg.build_layout(raw, set())
+    spot = next(o for o in lay["observers"] if o["id"] == "witness_person_8")
+    door = next(o for o in lay["openings"] if o["id"] == "rear")
+    plan = sg.plan_scenario(
+        [{"actor": "intruder", "node_id": "exterior", "action": "approach", "dt_sec_estimate": 5},
+         {"actor": "person_8_witness", "node_id": "exterior", "action": "look", "dt_sec_estimate": 10},
+         {"actor": "intruder", "node_id": "rear", "action": "damage", "dt_sec_estimate": 20}],
+        lay, [{"id": "intruder", "label": "Intruder"}, {"id": "person_8_witness", "label": "K. Sundaram night watchman", "role": "witness"}])
+    w = next(a for a in plan["actors"] if a["id"] == "person_8_witness")
+    pos = w["segments"][0]["pos"]
+    assert math.hypot(pos[0] - spot["stand_pos"][0], pos[2] - spot["stand_pos"][2]) < 0.5
+    assert math.hypot(pos[0] - door["gap_pos"][0], pos[2] - door["gap_pos"][2]) > 10
+    # a person with no position of their own still goes to the nearest door as before
+    plan2 = sg.plan_scenario([{"actor": "x", "node_id": "exterior", "action": "approach", "dt_sec_estimate": 5}, {"actor": "x", "node_id": "rear", "action": "look", "dt_sec_estimate": 5}], lay, [{"id": "x", "label": "Passer-by"}])
+    p2 = plan2["actors"][0]["segments"][0]["pos"]
+    assert math.hypot(p2[0] - door["outside_pos"][0], p2[2] - door["outside_pos"][2]) < 0.5

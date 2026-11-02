@@ -244,6 +244,20 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ops }),
     }),
+  startSandboxReview: (caseId: string) => request(`/cases/${caseId}/sandbox/review`, { method: "POST" }),
+  getSandboxReview: (caseId: string) => request(`/cases/${caseId}/sandbox/review`),
+  reviewFrameUrl: async (caseId: string, reviewId: string, name: string) => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API}/cases/${caseId}/sandbox/review/${reviewId}/frames/${name}`, { headers });
+    if (res.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "session expired — redirecting to login");
+    }
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    return URL.createObjectURL(await res.blob());
+  },
   createPhotoLinks: (caseId: string) => request(`/cases/${caseId}/sandbox/photo-links`, { method: "POST" }),
   getPhotoLinks: (caseId: string) => request(`/cases/${caseId}/sandbox/photo-links`),
   getNarrative: (caseId: string) => request(`/cases/${caseId}/narrative`),

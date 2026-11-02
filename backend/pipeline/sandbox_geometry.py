@@ -115,6 +115,11 @@ CHECKS_RUN = [
     "doors recorded as locked are not passed before someone forces or opens them",
     "movement between steps that evidence puts on the clock is long enough to walk the distance",
     "where a camera or witness is claimed to have seen a step, walls and furniture do not block the view",
+    "a hand-over has someone receiving it, close by and at the same time",
+    "nobody is shown putting down or handing over something they were never shown picking up (a caution: they may have brought it)",
+    "nobody who lies down is shown walking again without getting up (a caution)",
+    "nobody forces something open with no tool mentioned, and no closed, unforced outside door is passed with no sign it was opened (cautions)",
+    "two people are not standing in the same spot at the same time (a caution)",
 ]
 CHECKS_NOT_RUN = [
     "windows and glass (only doors, stairs and open boundaries are modelled)",
@@ -991,7 +996,9 @@ class NavGrid:
         self.nx = max(1, int((walk[1] - walk[0]) / self.cell) + 1)
         self.nz = max(1, int((walk[3] - walk[2]) / self.cell) + 1)
         self.free = bytearray(b"\x01") * (self.nx * self.nz)
+        pad = min(0.05, 0.5 * self.cell)  # rasterise slightly fat, so a path between grid points never clips a corner the exact check can see
         for b in boxes:
+            b = (b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad)
             ix0 = max(0, int(math.floor((b[0] - walk[0]) / self.cell)) - 1)
             ix1 = min(self.nx - 1, int(math.ceil((b[1] - walk[0]) / self.cell)) + 1)
             iz0 = max(0, int(math.floor((b[2] - walk[2]) / self.cell)) - 1)
@@ -1185,6 +1192,12 @@ class Scene:
         margin = layout.get("outside_margin", CONFIG["outside_offset_m"] + 8.0)
         self.outside_bounds: Rect = (min(r[0] for r in rects) - margin, max(r[1] for r in rects) + margin,
                                      min(r[2] for r in rects) - margin, max(r[3] for r in rects) + margin)
+        # anything placed outside (a witness at a kiosk down the road, a parked vehicle) must lie on the walkable ground
+        far = [o["pos"] for g in ("outdoor_objects", "observers", "key_locations") for o in layout.get(g, []) if o.get("room") == "outside" and o.get("pos")]
+        if far:
+            fb = self.outside_bounds
+            self.outside_bounds = (min(fb[0], min(p[0] for p in far) - 4.0), max(fb[1], max(p[0] for p in far) + 4.0),
+                                   min(fb[2], min(p[2] for p in far) - 4.0), max(fb[3], max(p[2] for p in far) + 4.0))
         self.outer_rects = [_expand(_room_rect(r), self.t2) for r in ground]
         obst = [_expand(o, self.R) for o in self.outer_rects] + [_expand(_fixture_rect(f), self.R) for f in layout.get("outdoor_objects", [])]
         self.outside = NavGrid(self.outside_bounds, obst, cell=max(0.2, (self.outside_bounds[1] - self.outside_bounds[0]) / 260.0))
@@ -1664,7 +1677,7 @@ def _parse_actors(raw_actors: Any, warnings: List[str]) -> List[dict]:
         actors.append({
             "id": aid, "label": clean_text(it.get("label"), 60) or aid, "role": clean_text(it.get("role"), 24).lower() or "person",
             "color": ACTOR_COLORS[len(actors) % len(ACTOR_COLORS)], "evidence_refs": refs,
-            "start_offset_s": clamp(to_seconds(it.get("start_offset_s"), 0.0), 0.0, 7200.0),
+            "start_offset_s": clamp(to_seconds(it.get("start_offset_s"), 0.0), 0.0, 21600.0),
         })
     if len(_as_list(raw_actors)) > MAX_ACTORS:
         warnings.append(f"only the first {MAX_ACTORS} people are modelled")
@@ -1673,12 +1686,30 @@ def _parse_actors(raw_actors: Any, warnings: List[str]) -> List[dict]:
     return actors
 
 
-def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any]:
+def _witness_spot_for(actor: dict, layout: dict) -> Optional[dict]:
+    """The witness position in the scene that belongs to this person, if the evidence gave one.
+    Matched by the same words in their id, or by their name appearing in the position's name."""
+    def toks(x: str) -> set:
+        return {t for t in re.split(r"[^a-z0-9]+", (x or "").lower()) if t}
+    aid, alabel = toks(actor.get("id", "")), (actor.get("label") or "").lower().strip()
+    for ob in layout.get("observers", []):
+        if ob.get("kind") != "witness":
+            continue
+        if aid and toks(ob["id"]) == aid:
+            return ob
+        ol = (ob.get("label") or "").lower()
+        if len(alabel) >= 6 and (alabel in ol or ol in alabel):
+            return ob
+    return None
+
+
+def _plan_once(steps: Any, layout: dict, actors: Any = None, waits: Optional[Dict[Tuple[str, int], float]] = None) -> Dict[str, Any]:
     """Turns step lists (one flat list; each step may name its `actor`) into a
     timed, routed plan for every person. Steps reference places by id only;
     unknown ids are dropped and reported, never invented. Each step becomes a
     walk followed by time spent doing the action, so actions never happen
     while walking."""
+    waits = waits or {}
     sc = get_scene(layout)
     result: Dict[str, Any] = {
         "ok": False, "actors": [], "violations": [], "warnings": [], "time_adjustments": [], "dropped_steps": [], "route_notes": [],
@@ -1717,7 +1748,13 @@ def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any
             continue
         nid = normalize_id(raw.get("node_id"))
         if nid == "exterior" or nid == "outside":
-            kind, node = "ext", None
+            actor_entry = next((a for a in actor_list if a["id"] == aid), {"id": aid})
+            spot = _witness_spot_for(actor_entry, layout)
+            if spot is not None:
+                # "outside" for a person who has a known position of their own means that position, not the nearest door
+                kind, node = "observer", spot
+            else:
+                kind, node = "ext", None
         elif nid in nodes:
             kind, node = nodes[nid]
         else:
@@ -1737,7 +1774,7 @@ def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any
             "claimed_s": clamp(to_seconds(raw.get("dt_sec_estimate"), 30.0), 1.0, 900.0), "narrative": clean_text(raw.get("narrative"), 400),
             "phase": clean_text(raw.get("phase"), 40) or action.upper(), "evidence_refs": refs, "effects": effects,
             "observed_by": [o for o in (normalize_id(x) for x in _as_list(raw.get("observed_by"))) if o in observer_ids][:4],
-            "item": clean_text(raw.get("item"), 60), "basis": "evidence" if refs else "inferred",
+            "item": clean_text(raw.get("item"), 60), "basis": "evidence" if refs else "inferred", "sync": _parse_sync(raw.get("sync_with")),
         })
     if sum(len(v) for v in per_actor.values()) < 2:
         result["violations"].append({"code": "too_few_steps", "step": None, "actor": None, "message": "fewer than two usable steps remained after checking locations against the scene layout"})
@@ -1830,7 +1867,20 @@ def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any
             if rid in sc.rooms and not sc.rooms[rid].get("observed", True) and rid not in notes_seen:
                 notes_seen.add(rid)
                 result["warnings"].append(f"{actor['label']} goes into '{sc.rooms[rid]['label']}', which the evidence does not describe")
+            extra = waits.get((actor["id"], k), 0.0)
+            if extra > 0:
+                if prev_loc is not None and segs and segs[-1]["kind"] == "dwell":
+                    last = dict(segs[-1])
+                    last.update({"t0": round(t, 3), "t1": round(t + extra, 3), "action": "wait", "phase": "waits", "item": "", "evidence_refs": [],
+                                 "narrative": "waits here: the scenario has the next step happen together with another person's step",
+                                 "routing_notes": [], "auto_routed": False})
+                    segs.append(last)
+                t += extra
             transit_s, route_len, step_notes, auto_routed = 0.0, 0.0, [], False
+            outside_note = (f"no place outside is named for this step, so {actor['label']} is shown at {s['door']['label']}"
+                            if s["kind"] == "ext" and s.get("door_inferred") and s.get("door") else "")
+            if outside_note and prev_loc is None:
+                step_notes.append(outside_note)
             arrive = t
             if prev_loc is not None:
                 r = sc.route(prev_loc, lc)
@@ -1905,7 +1955,7 @@ def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any
             segs.append({
                 "kind": "dwell", "actor": actor["id"], "t0": round(t, 3), "t1": round(t + dwell, 3), "step": k, "node_id": s["node_id"], "label": label,
                 "action": s["action"], "phase": s["phase"], "narrative": s["narrative"], "pos": [round(lc["pos"][0], 3), round(py, 3), round(lc["pos"][2], 3)],
-                "face_pos": [round(x, 3) for x in lc["face"]] if lc.get("face") else None, "auto_routed": False, "routing_notes": [],
+                "face_pos": [round(x, 3) for x in lc["face"]] if lc.get("face") else None, "auto_routed": False, "routing_notes": [outside_note] if outside_note else [],
                 "carrying": carrying, "item": s["item"], "evidence_refs": s["evidence_refs"], "failed": False, "space": space,
             })
             for e in s["effects"]:
@@ -1922,7 +1972,7 @@ def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any
                 "k": k, "src_index": s["src_index"], "actor": actor["id"], "node_id": s["node_id"], "label": label, "action": s["action"], "phase": s["phase"],
                 "narrative": s["narrative"], "evidence_refs": s["evidence_refs"], "basis": s["basis"], "claimed_s": round(s["claimed_s"], 1),
                 "arrive_s": round(arrive, 3), "depart_s": round(t + dwell, 3), "route_notes": step_notes, "auto_routed": auto_routed, "item": s["item"],
-                "effects": s["effects"], "observed_by": s["observed_by"],
+                "effects": s["effects"], "observed_by": s["observed_by"], "sync_with": s.get("sync"),
             })
             t += dwell
             prev_loc = lc
@@ -1943,6 +1993,84 @@ def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any
         for st in a["steps"]:
             for note in st["route_notes"]:
                 result["route_notes"].append(f"{a['label']}, step {st['k'] + 1} ({st['label']}): {note}")
+    return result
+
+
+SYNC_TOL_S = 4.0       # steps meant to happen together may differ by this much
+SYNC_MAX_WAIT_S = 300.0  # a person is never made to wait longer than this to meet another; a bigger gap is a real contradiction to report
+
+
+def _parse_sync(v: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(v, dict):
+        return None
+    who, n = normalize_id(v.get("actor")), v.get("step")
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return None
+    return {"actor": who, "step": n} if who and n >= 1 else None
+
+
+def _arrive(result: Dict[str, Any], aid: str, k: int) -> Optional[float]:
+    for a in result.get("actors", []):
+        if a["id"] == aid:
+            for st in a["steps"]:
+                if st["k"] == k:
+                    return st["arrive_s"]
+    return None
+
+
+def _sync_pairs(result: Dict[str, Any]) -> List[Tuple[str, int, str, int, str]]:
+    """Steps that must happen together: the ones the scenario links with sync_with, and every hand-over with the receive that matches it."""
+    pairs: List[Tuple[str, int, str, int, str]] = []
+    ids = {a["id"] for a in result.get("actors", [])}
+    linked = set()
+    for a in result.get("actors", []):
+        for st in a["steps"]:
+            sw = st.get("sync_with")
+            if sw and sw["actor"] in ids and sw["actor"] != a["id"] and _arrive(result, sw["actor"], sw["step"] - 1) is not None:
+                pairs.append((a["id"], st["k"], sw["actor"], sw["step"] - 1, "linked by the scenario"))
+                linked.add((a["id"], st["k"]))
+                linked.add((sw["actor"], sw["step"] - 1))
+    gives = sorted(((st["arrive_s"], a["id"], st["k"]) for a in result.get("actors", []) for st in a["steps"] if st["action"] == "hand_over" and (a["id"], st["k"]) not in linked))
+    gets = sorted(((st["arrive_s"], a["id"], st["k"]) for a in result.get("actors", []) for st in a["steps"] if st["action"] == "receive" and (a["id"], st["k"]) not in linked))
+    for _, ga, gk in gives:
+        match = next((r for r in gets if r[1] != ga), None)
+        if match:
+            gets.remove(match)
+            pairs.append((ga, gk, match[1], match[2], "a hand-over and its receive"))
+    return pairs
+
+
+def plan_scenario(steps: Any, layout: dict, actors: Any = None) -> Dict[str, Any]:
+    """Plans every person, then brings steps that must happen together (a hand-over and its receive, or steps the scenario links with
+    sync_with) into the same moment, by making whoever is early wait where they are. If that would mean a long wait, the contradiction is
+    left in place and reported instead of being hidden."""
+    waits: Dict[Tuple[str, int], float] = {}
+    result = _plan_once(steps, layout, actors, waits)
+    unsynced: List[str] = []
+    for _ in range(10):
+        change = None
+        for a, ka, b, kb, why in _sync_pairs(result):
+            ta, tb = _arrive(result, a, ka), _arrive(result, b, kb)
+            if ta is None or tb is None or abs(ta - tb) <= SYNC_TOL_S:
+                continue
+            who, k = (b, kb) if ta > tb else (a, ka)
+            need = abs(ta - tb)
+            if waits.get((who, k), 0.0) + need > SYNC_MAX_WAIT_S:
+                msg = f"{why}: the two steps are {need / 60:.0f} min apart in this scenario, too far apart to bring together by waiting, so they are left as they are"
+                if msg not in unsynced:
+                    unsynced.append(msg)
+                continue
+            change = (who, k, need)
+            break
+        if change is None:
+            break
+        waits[(change[0], change[1])] = waits.get((change[0], change[1]), 0.0) + change[2]
+        result = _plan_once(steps, layout, actors, waits)
+    result["sync"] = {"waits": [{"actor": w[0], "step": w[1], "seconds": round(sec, 1)} for w, sec in waits.items()], "not_brought_together": unsynced}
+    for m in unsynced:
+        result["warnings"].append(m)
     return result
 
 
@@ -2098,6 +2226,9 @@ def validate_plan(plan: Dict[str, Any], layout: dict) -> Dict[str, Any]:
                         seen_pairs.add((a1["id"], a2["id"]))
                         warnings.append(f"{a1['label']} and {a2['label']} are in the same spot at {t:.0f} s, so they would have to meet or collide")
             t += 0.5
+    lv, lw = _logic_checks(plan, layout)
+    violations.extend(lv)
+    warnings.extend(w for w in lw if w not in warnings)
     seen = set()
     uniq = []
     for v in violations:
@@ -2111,6 +2242,99 @@ def validate_plan(plan: Dict[str, Any], layout: dict) -> Dict[str, Any]:
         "total_duration_s": plan.get("total_duration_s", 0.0), "max_modelled_speed_mps": round(max_speed, 3),
         "observation_checks": claims, "checks_run": CHECKS_RUN, "checks_not_run": CHECKS_NOT_RUN, "engine_version": ENGINE_VERSION,
     }
+
+
+_MOVING_AFTER_DOWN = {"approach", "enter", "move", "flee", "search", "take_item", "damage", "open", "close", "unlock", "drop_item", "hand_over", "restrain"}
+
+
+def _overlap_s(a0: float, a1: float, b0: float, b1: float) -> float:
+    return min(a1, b1) - max(a0, b0)
+
+
+def _logic_checks(plan: Dict[str, Any], layout: dict) -> Tuple[List[dict], List[str]]:
+    """Situational logic that physics cannot see: who hands what to whom, who is able to walk,
+    whether a closed door was opened. Only what is logically impossible is a violation;
+    everything the evidence may simply not mention is a caution."""
+    violations: List[dict] = []
+    warnings: List[str] = []
+    ops = {o["id"]: o for o in layout["openings"]}
+    actors = plan.get("actors", [])
+    label = {a["id"]: a.get("label", a["id"]) for a in actors}
+    dwell = {a["id"]: [g for g in a["segments"] if g["kind"] == "dwell"] for a in actors}
+
+    # hand-overs need a receiver who is there at the time
+    for a in actors:
+        for g in dwell[a["id"]]:
+            if g["action"] != "hand_over":
+                continue
+            recv = [r for b in actors if b["id"] != a["id"] for r in dwell[b["id"]] if r["action"] == "receive"]
+            if not recv:
+                warnings.append(f"{label[a['id']]} hands something over at step {g['step'] + 1}, but nobody is shown receiving it")
+                continue
+            near = [r for r in recv if _overlap_s(g["t0"] - 8.0, g["t1"] + 8.0, r["t0"], r["t1"]) > 0 and _dist(g["pos"], r["pos"]) < 3.0 and abs(g["pos"][1] - r["pos"][1]) < 0.5]
+            if not near:
+                violations.append({"code": "handover_apart", "step": g["step"], "actor": a["id"],
+                                   "message": f"{label[a['id']]} hands something over at step {g['step'] + 1}, but whoever receives it is not close by at that time"})
+    for b in actors:
+        for r in dwell[b["id"]]:
+            if r["action"] == "receive" and not any(g["action"] == "hand_over" for o in actors if o["id"] != b["id"] for g in dwell[o["id"]]):
+                warnings.append(f"{label[b['id']]} receives something at step {r['step'] + 1}, but nobody is shown handing it over")
+
+    for a in actors:
+        aid, name = a["id"], label[a["id"]]
+        held: List[str] = []
+        warned = set()
+        had_tool_word = any(g.get("item") for g in dwell[aid])
+        down_at: Optional[int] = None
+        for seg in a["segments"]:
+            if seg["kind"] == "dwell":
+                act, item = seg["action"], (seg.get("item") or "").strip().lower()
+                if act == "take_item" and item:
+                    held.append(item)
+                elif act in ("drop_item", "hand_over") and item:
+                    if not any(item in h or h in item for h in held) and ("item", item) not in warned:
+                        warned.add(("item", item))
+                        verb = "puts down" if act == "drop_item" else "hands over"
+                        warnings.append(f"{name} {verb} '{item}' at step {seg['step'] + 1}, but no step shows them picking it up (they may have brought it)")
+                    held = [h for h in held if not (item in h or h in item)]
+                elif act in ("drop_item", "hand_over"):
+                    held = []
+                if act == "damage" and seg.get("node_id") in ops and not item and not held and not had_tool_word and ("tool", seg["node_id"]) not in warned:
+                    warned.add(("tool", seg["node_id"]))
+                    warnings.append(f"{name} forces '{ops[seg['node_id']]['label']}' at step {seg['step'] + 1}, but no tool is mentioned (the evidence may simply not say)")
+                if act == "lie_down":
+                    down_at = seg["step"]
+                elif act in ("stand", "sit"):
+                    down_at = None
+                elif down_at is not None and act in _MOVING_AFTER_DOWN and ("down", aid) not in warned:
+                    warned.add(("down", aid))
+                    warnings.append(f"{name} lies down at step {down_at + 1} and acts again at step {seg['step'] + 1}, with no step showing them getting up")
+            else:
+                if down_at is not None and ("down", aid) not in warned:
+                    warned.add(("down", aid))
+                    warnings.append(f"{name} lies down at step {down_at + 1} and walks again at step {seg['step'] + 1}, with no step showing them getting up")
+                kinds = seg.get("leg_kinds") or []
+                for i, oid in enumerate(seg.get("leg_openings") or []):
+                    op = ops.get(oid or "")
+                    if not op or op["kind"] != "external" or op["state"] != "intact" or i >= len(kinds) or kinds[i] != "door" or seg.get("node_id") == oid:
+                        continue  # walking up to a door to work on it is not passing through it
+                    opened = any(e["target"] == oid and e["state"] in ("forced", "opened", "unlocked", "open") and e["t"] <= seg["t0"] + 1.0 for e in plan.get("effects", []))
+                    opened = opened or any(g["node_id"] == oid and g["action"] in ("open", "unlock") and g["t1"] <= seg["t0"] + 1.0 for g in dwell[aid])
+                    if not opened and ("door", oid, aid) not in warned:
+                        warned.add(("door", oid, aid))
+                        warnings.append(f"{name} goes through '{op['label']}', which is recorded as closed and not forced, but no step shows it being opened or unlocked (a key or an unlocked door would explain it)")
+
+    # two people in the same spot for a while
+    seen_pairs = set()
+    for i, a in enumerate(actors):
+        for b in actors[i + 1:]:
+            for g in dwell[a["id"]]:
+                for r in dwell[b["id"]]:
+                    ov = _overlap_s(g["t0"], g["t1"], r["t0"], r["t1"])
+                    if ov >= 5.0 and _dist(g["pos"], r["pos"]) < 0.45 and abs(g["pos"][1] - r["pos"][1]) < 0.5 and (a["id"], b["id"]) not in seen_pairs:
+                        seen_pairs.add((a["id"], b["id"]))
+                        warnings.append(f"{label[a['id']]} and {label[b['id']]} would be standing in exactly the same spot for {ov:.0f} s")
+    return violations, warnings
 
 
 def _is_still(actor: dict, t: float) -> bool:

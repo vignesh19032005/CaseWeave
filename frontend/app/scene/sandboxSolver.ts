@@ -23,6 +23,7 @@ export interface ActorState {
   travelled: number;
   speed: number;
   started: boolean;
+  ended: boolean; // past their last step: the evidence says nothing about where they are now
   routingNotes: string[];
   autoRouted: boolean;
   evidenceRefs: string[];
@@ -163,9 +164,10 @@ function solveActor(actor: PlanActor, t: number): ActorState & { touched: string
   const base = { id: actor.id, label: actor.label, role: actor.role, color: actor.color };
   if (segs.length === 0) {
     return { ...base, pos: [0, 0, 0], heading: 0, kind: "dwell", action: "wait", pose: "stand", placeLabel: "", phase: "", narrative: "", step: 0, segIndex: 0, carrying: false, item: "",
-      travelled: 0, speed: 0, started: false, routingNotes: [], autoRouted: false, evidenceRefs: [], facePos: null, space: "", touched: [] };
+      travelled: 0, speed: 0, started: false, ended: false, routingNotes: [], autoRouted: false, evidenceRefs: [], facePos: null, space: "", touched: [] };
   }
   const started = t >= segs[0].t0 - 1e-9;
+  const ended = t > segs[segs.length - 1].t1 + 1e-9;
   const tc = Math.max(segs[0].t0, Math.min(segs[segs.length - 1].t1, t));
   let idx = segs.findIndex((s) => tc < s.t1);
   if (idx < 0) idx = segs.length - 1;
@@ -200,7 +202,7 @@ function solveActor(actor: PlanActor, t: number): ActorState & { touched: string
   }
   return {
     ...base, pos, heading: heading ?? 0, kind: seg.kind, action: seg.action, pose: poseFor(seg.action, seg.kind, speed), placeLabel: seg.label, phase: seg.phase,
-    narrative: seg.narrative, step: seg.step, segIndex: idx, carrying: seg.carrying, item: seg.item, travelled, speed, started,
+    narrative: seg.narrative, step: seg.step, segIndex: idx, carrying: seg.carrying, item: seg.item, travelled, speed, started, ended,
     routingNotes: seg.routing_notes, autoRouted: seg.auto_routed, evidenceRefs: seg.evidence_refs, facePos: seg.face_pos, space: seg.space, touched,
   };
 }

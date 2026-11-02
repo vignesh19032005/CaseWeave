@@ -201,7 +201,7 @@ def delete_case(case_id: str, user: dict = Depends(auth.get_current_user)):
     for table in [
         "evidence_items", "observations", "entities", "entity_mentions", "relationships",
         "timeline_events", "conflicts", "evidence_links", "conflict_reviews",
-        "sandbox_scenarios", "sandbox_runs", "sandbox_photo_links", "case_narratives", "cases",
+        "sandbox_scenarios", "sandbox_runs", "sandbox_photo_links", "sandbox_reviews", "case_narratives", "cases",
     ]:
         conn.execute(f"DELETE FROM {table} WHERE case_id=?", (case_id,))
     conn.execute("SET FOREIGN_KEY_CHECKS=1")
@@ -642,6 +642,36 @@ def sandbox_photo_links_get(case_id: str, user: dict = Depends(auth.get_current_
     auth.enforce_permission(user, "view_case")
     from pipeline import sandbox_photos
     return _sandbox_guard(sandbox_photos.latest_photo_links, case_id) or {"link_id": None, "content": None}
+
+
+@app.post("/cases/{case_id}/sandbox/review", status_code=202)
+@limiter.limit("2/minute")
+def sandbox_review_start(request: Request, case_id: str, background_tasks: BackgroundTasks, user: dict = Depends(auth.get_current_user)):
+    """A second model reviews every scenario against the evidence, the photographs and plan-view pictures of the scene. Runs in the background."""
+    auth.enforce_permission(user, "generate_scenario")
+    from pipeline import sandbox_review
+    review_id = _sandbox_guard(sandbox_review.start_review, case_id, user)
+    background_tasks.add_task(sandbox_review.run_review, review_id, case_id, user)
+    return {"review_id": review_id, "status": "running"}
+
+
+@app.get("/cases/{case_id}/sandbox/review")
+def sandbox_review_get(case_id: str, user: dict = Depends(auth.get_current_user)):
+    auth.enforce_permission(user, "view_case")
+    from pipeline import sandbox_review
+    return _sandbox_guard(sandbox_review.latest_review, case_id) or {"review_id": None, "status": "none", "content": None}
+
+
+@app.get("/cases/{case_id}/sandbox/review/{review_id}/frames/{name}")
+def sandbox_review_frame(case_id: str, review_id: str, name: str, user: dict = Depends(auth.get_current_user)):
+    """One plan-view picture the reviewer was shown."""
+    auth.enforce_permission(user, "view_case")
+    from pipeline import sandbox_review
+    p = sandbox_review.frame_path(case_id, review_id, name)
+    if p is None:
+        raise HTTPException(404, "picture not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(p, media_type="image/png")
 
 
 @app.get("/cases/{case_id}/sandbox/export")

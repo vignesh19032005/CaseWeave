@@ -17,11 +17,13 @@ const STATE_TEXT: Record<OpeningState, string> = {
   open: "recorded as open", unknown: "condition not established by evidence",
 };
 const OVERLAY_COLORS = ["#38bdf8", "#f472b6", "#a3e635", "#fbbf24", "#c084fc", "#2dd4bf"];
-const LABEL_SCREEN_HEIGHT = 0.03;
+const LABEL_SCREEN_HEIGHT = 0.02;
+const LABEL_MAX_CHARS = 34;
 
 // ---------------------------------------------------------------- labels (no DOM roots, no font download)
 
-function Label3D({ text, color, bg, position }: { text: string; color: string; bg: string; position: Vec3 }) {
+function Label3D({ text: full, color, bg, position }: { text: string; color: string; bg: string; position: Vec3 }) {
+  const text = full.length > LABEL_MAX_CHARS ? full.slice(0, LABEL_MAX_CHARS - 1).trimEnd() + "…" : full;
   const made = useMemo(() => {
     const c = document.createElement("canvas");
     const ctx = c.getContext("2d");
@@ -93,7 +95,7 @@ function bounds(layout: Layout) {
   return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, diag: Math.max(8, Math.hypot(x1 - x0, z1 - z0)) };
 }
 
-function CameraRig({ layout, mode, sim, focus }: { layout: Layout; mode: CameraMode; sim: SimState; focus: Vec3 | null }) {
+function CameraRig({ layout, mode, sim, focus, dragMode }: { layout: Layout; mode: CameraMode; sim: SimState; focus: Vec3 | null; dragMode: "rotate" | "move" }) {
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const wantPos = useRef(new THREE.Vector3());
   const wantLook = useRef(new THREE.Vector3());
@@ -108,7 +110,7 @@ function CameraRig({ layout, mode, sim, focus }: { layout: Layout; mode: CameraM
       wantPos.current.set(b.cx + 0.01, b.diag * 1.15, b.cz + 0.01);
       wantLook.current.set(b.cx, 0, b.cz);
     } else {
-      wantPos.current.set(b.cx + b.diag * 0.55, b.diag * 0.7, b.cz - b.diag * 0.75);
+      wantPos.current.set(b.cx + b.diag * 0.7, b.diag * 0.88, b.cz - b.diag * 0.95);
       wantLook.current.set(b.cx, 0.6, b.cz);
     }
     settling.current = true;
@@ -155,7 +157,7 @@ function CameraRig({ layout, mode, sim, focus }: { layout: Layout; mode: CameraM
   });
 
   return (
-    <OrbitControls ref={controls} makeDefault enabled={!observer} enableDamping dampingFactor={0.08} minDistance={0.8} maxDistance={160} maxPolarAngle={Math.PI / 2.02}
+    <OrbitControls ref={controls} makeDefault enabled={!observer} screenSpacePanning mouseButtons={{ LEFT: dragMode === "move" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} enableDamping dampingFactor={0.08} minDistance={0.8} maxDistance={160} maxPolarAngle={Math.PI / 2.02}
       onStart={() => { if (mode !== "follow") settling.current = false; }} />
   );
 }
@@ -326,7 +328,7 @@ function Ground({ layout }: { layout: Layout }) {
 
 // ---------------------------------------------------------------- doors, stairs
 
-function DoorLeaf({ op, layout, actors, state }: { op: Opening; layout: Layout; actors: ActorState[]; state: OpeningState }) {
+function DoorLeaf({ op, layout, actors, state, shut }: { op: Opening; layout: Layout; actors: ActorState[]; state: OpeningState; shut: boolean }) {
   const pivot = useRef<THREE.Group>(null);
   const angle = useRef(0);
   const h = layout.door_height_m;
@@ -335,7 +337,8 @@ function DoorLeaf({ op, layout, actors, state }: { op: Opening; layout: Layout; 
   useFrame(() => {
     let near = 99;
     for (const a of actors) near = Math.min(near, Math.hypot(a.pos[0] - op.gap_pos[0], a.pos[2] - op.gap_pos[2]) + Math.abs(a.pos[1] - y) * 3);
-    const target = near < 1.5 ? 1.35 : state === "forced" ? 0.5 : state === "open" ? 0.9 : 0;
+    // a locked or not-yet-forced door stays shut however close someone stands; a forced one is only prised ajar until someone goes through
+    const target = shut ? 0 : state === "forced" ? 0.5 : near < 1.5 ? 1.35 : state === "open" ? 0.9 : 0;
     angle.current += (target - angle.current) * 0.12;
     if (pivot.current) pivot.current.rotation.y = -angle.current;
   });
@@ -391,8 +394,8 @@ function Doors({ layout, state, forcedLater, showLabels, selectedId, actors, max
                 </mesh>
               ))}
             </group>
-            <DoorLeaf op={op} layout={layout} actors={actors} state={cur} />
-            {(showLabels || selectedId === op.id || op.state === "forced") && <Label3D text={`${op.label} · ${cur}`} color={color} bg="#0b1020e6" position={[op.gap_pos[0], y + 0.7, op.gap_pos[2]]} />}
+            <DoorLeaf op={op} layout={layout} actors={actors} state={cur} shut={state[op.id] === undefined && (op.state === "locked" || forcedLater.has(op.id))} />
+            {(showLabels || selectedId === op.id || state[op.id] === "forced") && <Label3D text={`${op.label} · ${cur}`} color={color} bg="#0b1020e6" position={[op.gap_pos[0], y + 0.7, op.gap_pos[2]]} />}
           </group>
         );
       })}
@@ -505,7 +508,7 @@ function KeyPlaces({ layout, activeLabels, showLabels, maxLevel, onInspect }: { 
   );
 }
 
-function Observers({ layout, inside, maxLevel, onInspect }: { layout: Layout; inside: string | null; maxLevel: number | null; onInspect: (i: InspectedItem) => void }) {
+function Observers({ layout, inside, showLabels, selectedId, maxLevel, onInspect }: { layout: Layout; inside: string | null; showLabels: boolean; selectedId: string | null; maxLevel: number | null; onInspect: (i: InspectedItem) => void }) {
   return (
     <group>
       {layout.observers.filter((o) => maxLevel === null || o.level <= maxLevel).map((ob) => {
@@ -535,7 +538,7 @@ function Observers({ layout, inside, maxLevel, onInspect }: { layout: Layout; in
             ) : (
               <mesh position={[ob.pos[0], y + 0.05, ob.pos[2]]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.3, 0.42, 20]} /><meshBasicMaterial color={color} /></mesh>
             )}
-            {!hidden && <Label3D text={ob.label} color={color} bg="#0b1020e6" position={[ob.pos[0], y + (ob.kind === "camera" ? ob.eye_height_m + 0.45 : 0.6), ob.pos[2]]} />}
+            {!hidden && (showLabels || selectedId === ob.id) && <Label3D text={ob.label} color={color} bg="#0b1020e6" position={[ob.pos[0], y + (ob.kind === "camera" ? ob.eye_height_m + 0.45 : 0.6), ob.pos[2]]} />}
           </group>
         );
       })}
@@ -627,10 +630,26 @@ function Person({ actor, visible }: { actor: ActorState; visible: boolean }) {
   const rLeg = useRef<THREE.Group>(null);
   const yaw = useRef<number | null>(null);
   const clothes = actor.color;
+  const faded = useRef<boolean | null>(null);
 
   useFrame((_, delta) => {
     if (!root.current) return;
     root.current.visible = visible;
+    // before their first step and after their last, the evidence does not say where they are: shown as a faint ghost, not as if still acting
+    const ghost = !actor.started || actor.ended;
+    if (faded.current !== ghost) {
+      faded.current = ghost;
+      root.current.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        for (const mat of Array.isArray(m) ? m : m ? [m] : []) {
+          const keep = (mat.userData as { base?: number }).base ?? mat.opacity;
+          (mat.userData as { base?: number }).base = keep;
+          mat.transparent = ghost || keep < 1;
+          mat.opacity = ghost ? Math.min(keep, 0.22) : keep;
+          mat.needsUpdate = true;
+        }
+      });
+    }
     root.current.position.set(actor.pos[0], actor.pos[1], actor.pos[2]);
     if (yaw.current === null) yaw.current = actor.heading;
     yaw.current += angleDiff(yaw.current, actor.heading) * (1 - Math.exp(-delta * 10)); // turns over ~0.1-0.2 s at any frame rate
@@ -686,14 +705,16 @@ function Person({ actor, visible }: { actor: ActorState; visible: boolean }) {
   );
 }
 
+const shortName = (n: string) => (n.length > 18 ? n.slice(0, 17).trimEnd() + "…" : n);
+
 function PeopleLabels({ actors, show }: { actors: ActorState[]; show: boolean }) {
   if (!show) return null;
   return (
     <group>
       {actors.map((a) => (
         <group key={a.id}>
-          <Label3D text={a.label} color={a.color} bg="#0b1020e6" position={[a.pos[0], a.pos[1] + (a.pose === "lie" ? 0.6 : 2.15), a.pos[2]]} />
-          {a.carrying && a.item && <Label3D text={`carrying: ${a.item}`} color="#e5e7eb" bg="#111827e6" position={[a.pos[0], a.pos[1] + (a.pose === "lie" ? 0.3 : 1.85), a.pos[2]]} />}
+          <Label3D text={!a.started ? `${shortName(a.label)} (not yet shown)` : a.ended ? `${shortName(a.label)} (last known)` : a.label} color={a.color} bg="#0b1020e6" position={[a.pos[0], a.pos[1] + (a.pose === "lie" ? 0.6 : 2.15), a.pos[2]]} />
+          {a.carrying && a.item && a.started && !a.ended && <Label3D text={`carrying: ${a.item}`} color="#e5e7eb" bg="#111827e6" position={[a.pos[0], a.pos[1] + (a.pose === "lie" ? 0.95 : 2.5), a.pos[2]]} />}
         </group>
       ))}
     </group>
@@ -714,6 +735,7 @@ export interface SceneProps {
   selectedId: string | null;
   maxLevel: number | null;
   daylight: number;
+  dragMode: "rotate" | "move";
   onInspect: (i: InspectedItem) => void;
 }
 
@@ -727,7 +749,7 @@ export default function SandboxScene3D(p: SceneProps) {
   // routes on floors hidden by the floor filter are hidden too
   const topY = p.maxLevel === null ? Infinity : Math.max(...layout.levels.filter((l) => l.level <= p.maxLevel!).map((l) => l.floor_y + l.height_m), 0);
   const b = useMemo(() => bounds(layout), [layout]);
-  const cam = useMemo(() => ({ position: [b.cx + b.diag * 0.55, b.diag * 0.7, b.cz - b.diag * 0.75] as Vec3, fov: 46 }), [b]);
+  const cam = useMemo(() => ({ position: [b.cx + b.diag * 0.7, b.diag * 0.88, b.cz - b.diag * 0.95] as Vec3, fov: 46 }), [b]);
   const levelOf = (space: string) => layout.rooms.find((r) => r.id === space)?.level ?? 0;
   const day = p.daylight;
   return (
@@ -736,7 +758,7 @@ export default function SandboxScene3D(p: SceneProps) {
       <ambientLight intensity={0.3 + 0.6 * day} color={day > 0.5 ? "#ffffff" : "#8ea3ff"} />
       <directionalLight position={[b.cx + 10, 22, b.cz - 8]} intensity={0.25 + 0.9 * day} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-b.diag} shadow-camera-right={b.diag} shadow-camera-top={b.diag} shadow-camera-bottom={-b.diag} />
       <directionalLight position={[b.cx - 8, 10, b.cz + 8]} intensity={0.2 + 0.3 * day} />
-      <CameraRig layout={layout} mode={p.camera} sim={sim} focus={p.focus} />
+      <CameraRig layout={layout} mode={p.camera} sim={sim} focus={p.focus} dragMode={p.dragMode} />
       <Ground layout={layout} />
       {layout.rooms.filter((r) => p.maxLevel === null || r.level <= p.maxLevel).map((r) => <Floor key={r.id} room={r} hole={stairHole(layout, r)} onInspect={p.onInspect} />)}
       <Shell layout={layout} cutaway={p.cutaway} maxLevel={p.maxLevel} onInspect={p.onInspect} />
@@ -744,7 +766,7 @@ export default function SandboxScene3D(p: SceneProps) {
       <Stairs layout={layout} maxLevel={p.maxLevel} showLabels={p.showLabels} onInspect={p.onInspect} />
       <Furniture layout={layout} touched={touched} effects={sim.effectStates} showLabels={p.showLabels} selectedId={p.selectedId} maxLevel={p.maxLevel} onInspect={p.onInspect} />
       <KeyPlaces layout={layout} activeLabels={activeLabels} showLabels={p.showLabels} maxLevel={p.maxLevel} onInspect={p.onInspect} />
-      <Observers layout={layout} inside={p.camera.startsWith("observer:") ? p.camera.slice(9) : null} maxLevel={p.maxLevel} onInspect={p.onInspect} />
+      <Observers layout={layout} showLabels={p.showLabels} selectedId={p.selectedId} inside={p.camera.startsWith("observer:") ? p.camera.slice(9) : null} maxLevel={p.maxLevel} onInspect={p.onInspect} />
       {scenario && <RouteLines scenario={scenario} sim={sim} topY={topY} onInspect={p.onInspect} />}
       {p.overlay.length > 0 && <OverlayRoutes scenarios={p.overlay} topY={topY} />}
       {scenario && sim.actors.map((a) => <Person key={a.id} actor={a} visible={p.maxLevel === null || levelOf(a.space) <= p.maxLevel} />)}

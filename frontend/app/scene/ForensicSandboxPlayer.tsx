@@ -5,8 +5,8 @@ import dynamic from "next/dynamic";
 import { api, ApiError } from "../lib/api";
 import { clockAt, daylightAt, formatDuration, solve, totalDuration } from "./sandboxSolver";
 import type { CameraMode } from "./SandboxScene3D";
-import { BasisBadge, ComparisonMatrix, LayoutEditor, PhotoEvidence, RefChips, Section, SceneBoundary } from "./SandboxPanels";
-import type { EditOp, InspectedItem, Layout, PhotoLinks, SandboxState, Scenario } from "./sandboxTypes";
+import { BasisBadge, ComparisonMatrix, LayoutEditor, PhotoEvidence, RefChips, ReviewPanel, Section, SceneBoundary } from "./SandboxPanels";
+import type { EditOp, InspectedItem, Layout, PhotoLinks, SandboxReview, SandboxState, Scenario } from "./sandboxTypes";
 
 const SandboxScene3D = dynamic(() => import("./SandboxScene3D"), {
   ssr: false,
@@ -36,12 +36,14 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
   const [camera, setCamera] = useState<CameraMode>("overview");
   const [cutaway, setCutaway] = useState(true);
   const [labels, setLabels] = useState(false);
+  const [dragMode, setDragMode] = useState<"rotate" | "move">("rotate");
   const [level, setLevel] = useState<number | null>(null);
   const [overlayAll, setOverlayAll] = useState(false);
   const [inspected, setInspected] = useState<InspectedItem | null>(null);
   const [focus, setFocus] = useState<[number, number, number] | null>(null);
   const [pending, setPending] = useState<EditOp[]>([]);
   const [photoLinks, setPhotoLinks] = useState<PhotoLinks | null>(null);
+  const [review, setReview] = useState<SandboxReview | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
 
   const [modal, setModal] = useState(false);
@@ -57,7 +59,10 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
       const s = (await api.getSandbox(caseId)) as SandboxState;
       setState(s);
       setLoadError("");
-      if (s.status === "ready") api.getPhotoLinks(caseId).then((p: PhotoLinks) => setPhotoLinks(p)).catch(() => undefined);
+      if (s.status === "ready") {
+        api.getPhotoLinks(caseId).then((p: PhotoLinks) => setPhotoLinks(p)).catch(() => undefined);
+        api.getSandboxReview(caseId).then((v: SandboxReview) => setReview(v)).catch(() => undefined);
+      }
     } catch (e) {
       setLoadError(errMsg(e, "Could not load the scene"));
     }
@@ -72,7 +77,10 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
           setState(s);
           setLoadError("");
         }
-        if (s.status === "ready") api.getPhotoLinks(caseId).then((p: PhotoLinks) => { if (!cancelled) setPhotoLinks(p); }).catch(() => undefined);
+        if (s.status === "ready") {
+          api.getPhotoLinks(caseId).then((p: PhotoLinks) => { if (!cancelled) setPhotoLinks(p); }).catch(() => undefined);
+          api.getSandboxReview(caseId).then((v: SandboxReview) => { if (!cancelled) setReview(v); }).catch(() => undefined);
+        }
       } catch (e) {
         if (!cancelled) setLoadError(errMsg(e, "Could not load the scene"));
       }
@@ -93,6 +101,12 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
     const id = setInterval(() => void load(), 3000);
     return () => clearInterval(id);
   }, [state?.status, load]);
+
+  useEffect(() => {
+    if (review?.status !== "running") return;
+    const id = setInterval(() => { api.getSandboxReview(caseId).then((v: SandboxReview) => setReview(v)).catch(() => undefined); }, 4000);
+    return () => clearInterval(id);
+  }, [review?.status, caseId]);
 
   useEffect(() => {
     if (!viewRunId) return;
@@ -180,6 +194,11 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
       await api.createPhotoLinks(caseId);
       setPhotoLinks((await api.getPhotoLinks(caseId)) as PhotoLinks);
     }, "Could not search the photographs");
+  const startReview = () =>
+    guarded("review", async () => {
+      await api.startSandboxReview(caseId);
+      setReview((await api.getSandboxReview(caseId)) as SandboxReview);
+    }, "Could not start the review");
   const applyEdits = () =>
     guarded("edit", async () => {
       await api.editSandboxLayout(caseId, pending);
@@ -320,11 +339,17 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                 >
                   <span className="text-[10px] opacity-80">{s.scenario_type === "officer_custom" ? "OFFICER" : `#${s.rank}`}</span>
                   <span className="truncate max-w-[200px]">{s.title}</span>
+                  {s.support_level === "less_supported" && <span title="Takes an alternative the evidence supports less well" className="text-[9px] px-1 rounded bg-amber-950 text-amber-300 border border-amber-800">less supported</span>}
                   <span className={`text-[10px] px-1.5 rounded font-mono ${s.validation.is_physically_possible ? "bg-emerald-950 text-emerald-300" : "bg-red-950 text-red-300"}`}>{s.score.verifiable_score}</span>
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {run?.generation?.provider_mode !== "local_only" && (run?.generation?.calls ?? []).some((c) => c.provider === "local") && (
+                <span title="Meta's hosted model could not answer, so the local model on this network was used for these steps. It is smaller, so check the scenarios more carefully." className="px-2 py-0.5 rounded border border-amber-800 bg-amber-950 text-amber-300 text-[10px]">
+                  local model used for {(run?.generation?.calls ?? []).filter((c) => c.provider === "local").length} step(s)
+                </span>
+              )}
               {run?.generation?.provider_mode && run.generation.provider_mode !== "auto" && (
                 <span title={run.generation.provider_mode === "local_only" ? "Every AI call for this scene ran on the department's own server" : "Only Meta's models were used for this scene"} className="px-2 py-0.5 rounded border border-sky-800 bg-sky-950 text-sky-300 text-[10px]">
                   {run.generation.provider_mode === "local_only" ? "on-premise model" : "Meta models only"}
@@ -403,6 +428,11 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                       {layout.levels.map((l) => <option key={l.level} value={l.level}>Up to floor {l.level}</option>)}
                     </select>
                   )}
+                  <div className="flex border border-zinc-800 rounded bg-zinc-900 p-0.5 text-[10px]" title="What dragging with the left mouse button does. Right-drag always moves the view; the wheel zooms.">
+                    {(["rotate", "move"] as const).map((m) => (
+                      <button key={m} onClick={() => setDragMode(m)} className={`px-1.5 py-0.5 rounded ${dragMode === m ? "bg-indigo-600 text-white" : "text-zinc-400"}`}>{m === "rotate" ? "Rotate" : "Move"}</button>
+                    ))}
+                  </div>
                   <label className="flex items-center gap-1 text-[11px] text-zinc-400"><input type="checkbox" checked={cutaway} onChange={(e) => setCutaway(e.target.checked)} /> Cutaway walls</label>
                   <label className="flex items-center gap-1 text-[11px] text-zinc-400"><input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> All labels</label>
                 </div>
@@ -441,7 +471,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                   <SceneBoundary resetKey={`${run?.run_id}-${scenario.scenario_id}`}>
                     <SandboxScene3D
                       layout={layout} scenario={scenario} overlay={overlay} sim={sim} cutaway={cutaway} showLabels={labels}
-                      camera={camera} focus={focus} selectedId={inspected?.id ?? null} maxLevel={level} daylight={daylight}
+                      camera={camera} focus={focus} selectedId={inspected?.id ?? null} maxLevel={level} daylight={daylight} dragMode={dragMode}
                       onInspect={(i) => { setInspected(i); if (i.focus) setFocus(i.focus); }}
                     />
                   </SceneBoundary>
@@ -479,6 +509,9 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
 
                   <Section title={scenario.scenario_type === "officer_custom" ? "Officer theory" : `Candidate #${scenario.rank}`}>
                     <p className="text-xs text-zinc-200 leading-relaxed">{scenario.hypothesis_summary}</p>
+                    {scenario.differs_by && <p className="text-[11px] text-indigo-300">What is different about this one: {scenario.differs_by}</p>}
+                    {scenario.support_level === "less_supported" && <p className="text-[11px] text-amber-300">This is a less supported possibility: it takes an alternative the evidence leans away from. It is shown so you can test it, not because it is the likeliest.</p>}
+                    {scenario.support_level === "alternative" && <p className="text-[11px] text-sky-300">An alternative reading of a question the evidence leaves open.</p>}
                     {scenario.officer_input && <p className="text-[11px] text-zinc-400">Proposed by {scenario.officer_input.submitted_by}: &ldquo;{scenario.officer_input.hypothesis}&rdquo;</p>}
                     {scenario.scenario_type === "officer_custom" && canGenerate && !readOnly && (
                       <button onClick={() => retract(scenario)} className="text-[11px] text-red-400 hover:underline">Withdraw this scenario (kept in the record)</button>
@@ -493,9 +526,9 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                     {sim.actors.map((a) => (
                       <div key={a.id} className="text-xs text-zinc-200">
                         <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: a.color }} />
-                        <b>{a.label}</b>: {!a.started ? "not yet on scene" : a.kind === "transit" ? `walking to ${a.placeLabel}` : `${a.action.replace("_", " ")} at ${a.placeLabel}`}
-                        {a.started && a.narrative && <div className="text-[11px] text-zinc-400 ml-3">{a.narrative}</div>}
-                        {a.started && a.routingNotes.length > 0 && <div className="text-[11px] text-amber-300 ml-3">System routing: {a.routingNotes.join("; ")}.</div>}
+                        <b>{a.label}</b>: {!a.started ? "not yet on scene" : a.ended ? `no further steps; last shown ${a.action.replace("_", " ")} at ${a.placeLabel}` : a.kind === "transit" ? `walking to ${a.placeLabel}` : `${a.action.replace("_", " ")} at ${a.placeLabel}`}
+                        {a.started && !a.ended && a.narrative && <div className="text-[11px] text-zinc-400 ml-3">{a.narrative}</div>}
+                        {a.started && !a.ended && a.routingNotes.length > 0 && <div className="text-[11px] text-amber-300 ml-3">System routing: {a.routingNotes.join("; ")}.</div>}
                       </div>
                     ))}
                     {primary && primary.kind === "dwell" && <RefChips refs={primary.evidenceRefs} index={index} />}
@@ -551,6 +584,32 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                       <div className="text-[11px] text-amber-300">Times mentioned with no timed evidence behind them: {scenario.unsupported_time_mentions.join(", ")}.</div>
                     )}
                   </Section>
+
+                  {scenario.fidelity && (
+                    <Section title="Does the simulation match the scenario?" tone={scenario.fidelity.round_trip_ok ? "good" : "bad"}>
+                      <div className="text-[11px] text-zinc-300">
+                        {scenario.fidelity.round_trip_ok ? "Yes. " : "No: "}
+                        {scenario.fidelity.steps_in_simulation} of {scenario.fidelity.steps_given} steps shown
+                        {scenario.fidelity.steps_not_placed > 0 ? ` (${scenario.fidelity.steps_not_placed} could not be placed in the scene)` : ""} · {scenario.fidelity.effects_in_simulation}/{scenario.fidelity.effects_expected} stated changes to doors and objects happen · {scenario.fidelity.people_shown} of {scenario.fidelity.people_listed} listed people shown.
+                      </div>
+                      {scenario.coverage && (
+                        <div className="text-[11px] text-zinc-400">
+                          Uses {scenario.coverage.key_used} of the {scenario.coverage.key_observations} most relevant observations.
+                          {scenario.coverage.people_not_covered.length > 0 && <span className="text-amber-300"> Not covered: {scenario.coverage.people_not_covered.join(", ")}.</span>}
+                        </div>
+                      )}
+                    </Section>
+                  )}
+                  <ReviewPanel caseId={caseId} review={review} scenarioId={scenario.scenario_id} evidenceIndex={index} canStart={canGenerate && !readOnly} busy={busy === "review"} onStart={startReview} />
+                  {scenario.diversity && scenario.diversity.compared_with.length > 0 && (
+                    <Section title="How different from the other scenarios">
+                      {scenario.diversity.compared_with.map((c) => (
+                        <div key={c.scenario_id} className="text-[11px] text-zinc-300">
+                          vs #{c.rank}: {c.too_similar ? <span className="text-amber-300">very similar</span> : <span className="text-emerald-300">different</span>} ({c.distance.toFixed(2)}){c.differs_in.length > 0 && <span className="text-zinc-500"> — differs in {c.differs_in.join(", ")}</span>}
+                        </div>
+                      ))}
+                    </Section>
+                  )}
 
                   {(scenario.weak_citations.length > 0 || scenario.disputed_citations.length > 0 || scenario.citations_removed > 0 || scenario.narrative_consistency.facts_not_reflected?.length) && (
                     <Section title="Evidence cautions" tone="warn">
