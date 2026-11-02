@@ -182,6 +182,7 @@ export interface Fact {
   invalid_refs: string[];
   weak_refs?: string[];
   supported: boolean;
+  kind?: "contradicts" | "open_question";
 }
 
 export interface Violation {
@@ -266,6 +267,8 @@ export interface Scenario {
   unsupported_time_mentions: string[];
   disputed_citations: string[];
   citations_removed: number;
+  strengthened?: { from_score: number; to_score: number };
+  repair?: { problems_found: string[]; problems_left: number };
   differs_by?: string;
   less_supported?: boolean;
   support_level?: "best_supported" | "alternative" | "less_supported";

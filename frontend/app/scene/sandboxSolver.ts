@@ -259,3 +259,67 @@ export const ACTION_LABEL: Record<string, string> = {
   struggle: "struggles", restrain: "restrains someone", damage: "damages something", open: "opens", close: "closes", unlock: "unlocks", wait: "waits", hide: "hides",
   look: "looks around", flee: "runs away", search: "searches", enter: "enters", approach: "approaches", move: "moves", sit: "sits", stand: "stands", shout: "shouts", call: "makes a call", other: "acts",
 };
+
+
+// ---------------------------------------------------------------- skipping stretches where nothing happens
+
+export interface QuietGap { from: number; to: number }
+export interface AxisPiece { t0: number; t1: number; d0: number; d1: number; gap: boolean }
+export interface TimeAxis { pieces: AxisPiece[]; display: number; gaps: QuietGap[]; skipped: number }
+
+/** Stretches longer than minLen seconds in which nobody is doing anything (everyone has finished or not yet started). */
+export function quietGaps(scn: Scenario | undefined, minLen = 40): QuietGap[] {
+  if (!scn) return [];
+  const total = totalDuration(scn);
+  const spans: [number, number][] = [];
+  for (const a of scn.plan.actors) for (const g of a.segments) spans.push([g.t0, g.t1]);
+  spans.sort((x, y) => x[0] - y[0]);
+  const gaps: QuietGap[] = [];
+  let reach = 0;
+  for (const [a, b] of spans) {
+    if (a - reach >= minLen) gaps.push({ from: reach, to: a });
+    reach = Math.max(reach, b);
+  }
+  if (total - reach >= minLen) gaps.push({ from: reach, to: total });
+  return gaps;
+}
+
+/** A playback clock with each quiet gap shortened to `keep` seconds: the first and last half of that are shown, the middle is skipped. */
+export function buildAxis(total: number, gaps: QuietGap[], keep = 30): TimeAxis {
+  const pieces: AxisPiece[] = [];
+  let t = 0, d = 0, skipped = 0;
+  for (const g of gaps) {
+    if (g.to - g.from <= keep) continue;
+    if (g.from > t) { pieces.push({ t0: t, t1: g.from, d0: d, d1: d + (g.from - t), gap: false }); d += g.from - t; }
+    pieces.push({ t0: g.from, t1: g.to, d0: d, d1: d + keep, gap: true });
+    d += keep;
+    skipped += g.to - g.from - keep;
+    t = g.to;
+  }
+  if (total > t) { pieces.push({ t0: t, t1: total, d0: d, d1: d + (total - t), gap: false }); d += total - t; }
+  if (pieces.length === 0) pieces.push({ t0: 0, t1: total, d0: 0, d1: total, gap: false });
+  return { pieces, display: d, gaps, skipped };
+}
+
+export function toDisplay(ax: TimeAxis, t: number): number {
+  for (const p of ax.pieces) {
+    if (t > p.t1 && p !== ax.pieces[ax.pieces.length - 1]) continue;
+    if (!p.gap) return p.d0 + Math.max(0, Math.min(p.t1 - p.t0, t - p.t0));
+    const half = (p.d1 - p.d0) / 2;
+    if (t <= p.t0 + half) return p.d0 + Math.max(0, t - p.t0);
+    if (t >= p.t1 - half) return p.d0 + half + (t - (p.t1 - half));
+    return p.d0 + half; // in the skipped middle
+  }
+  return ax.display;
+}
+
+export function fromDisplay(ax: TimeAxis, d: number): number {
+  for (const p of ax.pieces) {
+    if (d > p.d1 && p !== ax.pieces[ax.pieces.length - 1]) continue;
+    if (!p.gap) return p.t0 + Math.max(0, Math.min(p.d1 - p.d0, d - p.d0));
+    const half = (p.d1 - p.d0) / 2;
+    const x = Math.max(0, Math.min(p.d1 - p.d0, d - p.d0));
+    return x <= half ? p.t0 + x : p.t1 - half + (x - half);
+  }
+  return ax.pieces[ax.pieces.length - 1].t1;
+}

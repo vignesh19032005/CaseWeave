@@ -48,7 +48,8 @@ CAUTION_WEIGHTS: Dict[str, Tuple[int, int]] = {
 
 SCORE_FORMULA = (
     "score = 100 x (0.45 x share of steps citing relevant real evidence + 0.35 x distinct relevant observations cited (capped at 6) / 6 "
-    "+ 0.20 x share of steps that were placed in the scene) - 8 per contradiction with a real citation (3 without; total capped at 30) "
+    "+ 0.20 x share of steps that were placed in the scene) - 8 per fact that contradicts the account with a real citation (3 without), or 2 per open question the "
+    "evidence leaves unsettled (1 without); contradictions and open questions together capped at 30 "
     "- small fixed penalties for cautions (a door recorded as intact or locked that is used, times from different recordings, times in the text "
     "that no cited evidence gives, citations from disputed sources, citations that do not seem to concern the step; each capped). "
     "Capped at 25 if any hard physical or timing violation exists. "
@@ -317,7 +318,8 @@ def clean_facts(raw: Any, known: set, limit: int = 12) -> List[Dict[str, Any]]:
             continue
         refs_raw += _CITE_RE.findall(text)
         valid, invalid = clean_refs(refs_raw, known)
-        out.append({"text": text, "refs": valid, "invalid_refs": invalid, "supported": bool(valid)})
+        kind = str(item.get("kind") or "").lower() if isinstance(item, dict) else ""
+        out.append({"text": text, "refs": valid, "invalid_refs": invalid, "supported": bool(valid), "kind": "open_question" if kind == "open_question" else "contradicts"})
         if len(out) >= limit:
             break
     return out
@@ -498,7 +500,8 @@ def score_scenario(*, llm_estimate: int, steps: List[dict], dropped: int, suppor
     support_term = min(1.0, len(distinct_real) / 6.0)
     placed = n / (n + dropped) if (n + dropped) else 0.0
     base = 100.0 * (0.45 * coverage + 0.35 * support_term + 0.20 * placed)
-    pen_contra = min(30, sum(8 if f["refs"] else 3 for f in contradicted))
+    # a fact that contradicts the account costs more than an open question the evidence simply leaves unsettled; anything not marked is treated as a contradiction
+    pen_contra = min(30, sum((2 if f.get("kind") == "open_question" else 8) if f["refs"] else (1 if f.get("kind") == "open_question" else 3) for f in contradicted))
     caution_detail: Dict[str, int] = {}
     pen_caution = 0
     for name, count in (cautions or {}).items():
@@ -518,7 +521,7 @@ def score_scenario(*, llm_estimate: int, steps: List[dict], dropped: int, suppor
             "steps_total": n, "steps_citing_evidence": cited, "step_coverage": round(coverage, 3),
             "distinct_real_observations_cited": len(distinct_real), "support_term": round(support_term, 3),
             "steps_dropped_not_in_scene": dropped, "placed_share": round(placed, 3),
-            "contradictions": len(contradicted), "contradictions_with_citation": sum(1 for f in contradicted if f["refs"]),
+            "contradictions": sum(1 for f in contradicted if f.get("kind") != "open_question"), "open_questions": sum(1 for f in contradicted if f.get("kind") == "open_question"), "contradictions_with_citation": sum(1 for f in contradicted if f["refs"]),
             "caution_penalty_points": pen_caution, "caution_breakdown": caution_detail, "hard_violations": hard_violations,
             "base_before_penalties": round(base, 1), "penalty_points": pen_contra + pen_caution,
         },

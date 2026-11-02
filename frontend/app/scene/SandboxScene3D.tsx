@@ -8,6 +8,8 @@ import type { InspectedItem, Layout, Observer, Opening, OpeningState, Room, Scen
 import { SPIRAL_R } from "./sandboxSolver";
 import type { ActorState, SimState } from "./sandboxSolver";
 import { FurnitureModel, inferKind } from "./SandboxFurniture";
+import { Label3D, LabelProvider, labelState } from "./SandboxLabels";
+import type { LabelMode } from "./SandboxLabels";
 
 export type CameraMode = "overview" | "topdown" | "follow" | `observer:${string}`;
 
@@ -17,45 +19,6 @@ const STATE_TEXT: Record<OpeningState, string> = {
   open: "recorded as open", unknown: "condition not established by evidence",
 };
 const OVERLAY_COLORS = ["#38bdf8", "#f472b6", "#a3e635", "#fbbf24", "#c084fc", "#2dd4bf"];
-const LABEL_SCREEN_HEIGHT = 0.02;
-const LABEL_MAX_CHARS = 34;
-
-// ---------------------------------------------------------------- labels (no DOM roots, no font download)
-
-function Label3D({ text: full, color, bg, position }: { text: string; color: string; bg: string; position: Vec3 }) {
-  const text = full.length > LABEL_MAX_CHARS ? full.slice(0, LABEL_MAX_CHARS - 1).trimEnd() + "…" : full;
-  const made = useMemo(() => {
-    const c = document.createElement("canvas");
-    const ctx = c.getContext("2d");
-    const font = "600 30px system-ui, sans-serif";
-    if (!ctx) return null;
-    ctx.font = font;
-    const w = Math.ceil(ctx.measureText(text).width) + 28;
-    c.width = w;
-    c.height = 52;
-    ctx.font = font;
-    ctx.fillStyle = bg;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.roundRect(2, 2, w - 4, 48, 10);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = color;
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, 14, 27);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return { tex, aspect: w / 52 };
-  }, [text, color, bg]);
-  useEffect(() => () => made?.tex.dispose(), [made]);
-  if (!made) return null;
-  return (
-    <sprite position={position} scale={[LABEL_SCREEN_HEIGHT * made.aspect, LABEL_SCREEN_HEIGHT, 1]} renderOrder={20} raycast={() => null}>
-      <spriteMaterial map={made.tex} transparent depthTest={false} sizeAttenuation={false} />
-    </sprite>
-  );
-}
 
 // ---------------------------------------------------------------- floor texture
 
@@ -158,7 +121,7 @@ function CameraRig({ layout, mode, sim, focus, dragMode }: { layout: Layout; mod
 
   return (
     <OrbitControls ref={controls} makeDefault enabled={!observer} screenSpacePanning mouseButtons={{ LEFT: dragMode === "move" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} enableDamping dampingFactor={0.08} minDistance={0.8} maxDistance={160} maxPolarAngle={Math.PI / 2.02}
-      onStart={() => { if (mode !== "follow") settling.current = false; }} />
+      onStart={() => { labelState.dragging = true; if (mode !== "follow") settling.current = false; }} onEnd={() => { labelState.dragging = false; }} />
   );
 }
 
@@ -395,7 +358,7 @@ function Doors({ layout, state, forcedLater, showLabels, selectedId, actors, max
               ))}
             </group>
             <DoorLeaf op={op} layout={layout} actors={actors} state={cur} shut={state[op.id] === undefined && (op.state === "locked" || forcedLater.has(op.id))} />
-            {(showLabels || selectedId === op.id || state[op.id] === "forced") && <Label3D text={`${op.label} · ${cur}`} color={color} bg="#0b1020e6" position={[op.gap_pos[0], y + 0.7, op.gap_pos[2]]} />}
+            {(showLabels || selectedId === op.id || state[op.id] === "forced") && <Label3D text={`${op.label} · ${cur}`} color={color} bg="#0b1020e6" position={[op.gap_pos[0], y + 0.7, op.gap_pos[2]]} priority={selectedId === op.id ? 0 : state[op.id] === "forced" ? 1 : 2} />}
           </group>
         );
       })}
@@ -474,7 +437,7 @@ function Furniture({ layout, touched, effects, showLabels, selectedId, maxLevel,
             }}
           >
             <FurnitureModel kind={kind} w={f.footprint_m[0]} d={f.footprint_m[1]} h={f.height_m} color={f.color_hex} hot={hot || sel} assumed={f.basis === "assumed"} />
-            {(showLabels || hot || sel) && <Label3D text={f.label} color="#e2e8f0" bg="#0b1020d9" position={[0, f.height_m + 0.45, 0]} />}
+            {(showLabels || hot || sel) && <Label3D text={f.label} color="#e2e8f0" bg="#0b1020d9" position={[0, f.height_m + 0.45, 0]} priority={sel ? 0 : hot ? 1 : 2} />}
           </group>
         );
       })}
@@ -500,7 +463,7 @@ function KeyPlaces({ layout, activeLabels, showLabels, maxLevel, onInspect }: { 
               <ringGeometry args={[0.32, 0.45, 28]} />
               <meshBasicMaterial color={active ? "#ef4444" : "#fbbf24"} transparent opacity={active ? 0.95 : 0.6} side={THREE.DoubleSide} />
             </mesh>
-            {(showLabels || active) && <Label3D text={kl.label} color="#fcd34d" bg="#451a03d9" position={[0, 0.25, 0]} />}
+            {(showLabels || active) && <Label3D text={kl.label} color="#fcd34d" bg="#451a03d9" position={[0, 0.25, 0]} priority={active ? 1 : 2} />}
           </group>
         );
       })}
@@ -538,7 +501,7 @@ function Observers({ layout, inside, showLabels, selectedId, maxLevel, onInspect
             ) : (
               <mesh position={[ob.pos[0], y + 0.05, ob.pos[2]]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.3, 0.42, 20]} /><meshBasicMaterial color={color} /></mesh>
             )}
-            {!hidden && (showLabels || selectedId === ob.id) && <Label3D text={ob.label} color={color} bg="#0b1020e6" position={[ob.pos[0], y + (ob.kind === "camera" ? ob.eye_height_m + 0.45 : 0.6), ob.pos[2]]} />}
+            {!hidden && (showLabels || selectedId === ob.id) && <Label3D text={ob.label} color={color} bg="#0b1020e6" position={[ob.pos[0], y + (ob.kind === "camera" ? ob.eye_height_m + 0.45 : 0.6), ob.pos[2]]} priority={selectedId === ob.id ? 0 : 2} />}
           </group>
         );
       })}
@@ -707,16 +670,15 @@ function Person({ actor, visible }: { actor: ActorState; visible: boolean }) {
 
 const shortName = (n: string) => (n.length > 18 ? n.slice(0, 17).trimEnd() + "…" : n);
 
-function PeopleLabels({ actors, show }: { actors: ActorState[]; show: boolean }) {
-  if (!show) return null;
+function PeopleLabels({ actors }: { actors: ActorState[] }) {
   return (
     <group>
-      {actors.map((a) => (
-        <group key={a.id}>
-          <Label3D text={!a.started ? `${shortName(a.label)} (not yet shown)` : a.ended ? `${shortName(a.label)} (last known)` : a.label} color={a.color} bg="#0b1020e6" position={[a.pos[0], a.pos[1] + (a.pose === "lie" ? 0.6 : 2.15), a.pos[2]]} />
-          {a.carrying && a.item && a.started && !a.ended && <Label3D text={`carrying: ${a.item}`} color="#e5e7eb" bg="#111827e6" position={[a.pos[0], a.pos[1] + (a.pose === "lie" ? 0.95 : 2.5), a.pos[2]]} />}
-        </group>
-      ))}
+      {actors.map((a) => {
+        const lying = a.pose === "lie";
+        const name = !a.started ? `${shortName(a.label)} (not yet shown)` : a.ended ? `${shortName(a.label)} (last known)` : a.label;
+        const text = a.carrying && a.item && a.started && !a.ended ? `${name} · carrying ${a.item}` : name;
+        return <Label3D key={a.id} text={text} color={a.color} bg="#0b1020e6" position={[a.pos[0], a.pos[1] + (lying ? 0.6 : 2.1), a.pos[2]]} priority={0} body={lying ? 0.5 : 1.8} />;
+      })}
     </group>
   );
 }
@@ -729,7 +691,7 @@ export interface SceneProps {
   overlay: Scenario[];
   sim: SimState;
   cutaway: boolean;
-  showLabels: boolean;
+  labelMode: LabelMode;
   camera: CameraMode;
   focus: Vec3 | null;
   selectedId: string | null;
@@ -758,19 +720,21 @@ export default function SandboxScene3D(p: SceneProps) {
       <ambientLight intensity={0.3 + 0.6 * day} color={day > 0.5 ? "#ffffff" : "#8ea3ff"} />
       <directionalLight position={[b.cx + 10, 22, b.cz - 8]} intensity={0.25 + 0.9 * day} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-b.diag} shadow-camera-right={b.diag} shadow-camera-top={b.diag} shadow-camera-bottom={-b.diag} />
       <directionalLight position={[b.cx - 8, 10, b.cz + 8]} intensity={0.2 + 0.3 * day} />
+      <LabelProvider muted={p.labelMode === "off"}>
       <CameraRig layout={layout} mode={p.camera} sim={sim} focus={p.focus} dragMode={p.dragMode} />
       <Ground layout={layout} />
       {layout.rooms.filter((r) => p.maxLevel === null || r.level <= p.maxLevel).map((r) => <Floor key={r.id} room={r} hole={stairHole(layout, r)} onInspect={p.onInspect} />)}
       <Shell layout={layout} cutaway={p.cutaway} maxLevel={p.maxLevel} onInspect={p.onInspect} />
-      <Doors layout={layout} state={sim.effectStates} forcedLater={forcedLater} showLabels={p.showLabels} selectedId={p.selectedId} actors={sim.actors} maxLevel={p.maxLevel} onInspect={p.onInspect} />
-      <Stairs layout={layout} maxLevel={p.maxLevel} showLabels={p.showLabels} onInspect={p.onInspect} />
-      <Furniture layout={layout} touched={touched} effects={sim.effectStates} showLabels={p.showLabels} selectedId={p.selectedId} maxLevel={p.maxLevel} onInspect={p.onInspect} />
-      <KeyPlaces layout={layout} activeLabels={activeLabels} showLabels={p.showLabels} maxLevel={p.maxLevel} onInspect={p.onInspect} />
-      <Observers layout={layout} showLabels={p.showLabels} selectedId={p.selectedId} inside={p.camera.startsWith("observer:") ? p.camera.slice(9) : null} maxLevel={p.maxLevel} onInspect={p.onInspect} />
+      <Doors layout={layout} state={sim.effectStates} forcedLater={forcedLater} showLabels={p.labelMode === "all"} selectedId={p.selectedId} actors={sim.actors} maxLevel={p.maxLevel} onInspect={p.onInspect} />
+      <Stairs layout={layout} maxLevel={p.maxLevel} showLabels={p.labelMode === "all"} onInspect={p.onInspect} />
+      <Furniture layout={layout} touched={touched} effects={sim.effectStates} showLabels={p.labelMode === "all"} selectedId={p.selectedId} maxLevel={p.maxLevel} onInspect={p.onInspect} />
+      <KeyPlaces layout={layout} activeLabels={activeLabels} showLabels={p.labelMode === "all"} maxLevel={p.maxLevel} onInspect={p.onInspect} />
+      <Observers layout={layout} showLabels={p.labelMode === "all"} selectedId={p.selectedId} inside={p.camera.startsWith("observer:") ? p.camera.slice(9) : null} maxLevel={p.maxLevel} onInspect={p.onInspect} />
       {scenario && <RouteLines scenario={scenario} sim={sim} topY={topY} onInspect={p.onInspect} />}
       {p.overlay.length > 0 && <OverlayRoutes scenarios={p.overlay} topY={topY} />}
       {scenario && sim.actors.map((a) => <Person key={a.id} actor={a} visible={p.maxLevel === null || levelOf(a.space) <= p.maxLevel} />)}
-      {scenario && <PeopleLabels actors={sim.actors.filter((a) => p.maxLevel === null || levelOf(a.space) <= p.maxLevel)} show />}
+      {scenario && <PeopleLabels actors={sim.actors.filter((a) => p.maxLevel === null || levelOf(a.space) <= p.maxLevel)} />}
+      </LabelProvider>
     </Canvas>
   );
 }

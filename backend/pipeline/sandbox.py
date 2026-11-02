@@ -215,7 +215,8 @@ Respond with ONLY one JSON object: {{"scenarios": [ ...3 objects... ]}}. Each sc
 - plausibility_estimate: integer 0-100, your own rough estimate (shown as your opinion, never as a measurement)
 - actors: as above
 - supporting_facts: array of {{"text": "", "refs": ["<id>"]}}
-- contradicted_points: array of {{"text": "", "refs": ["<id>"]}}: facts that weaken this account, or open questions
+- contradicted_points: array of {{"text": "", "refs": ["<id>"], "kind": "contradicts|open_question"}}. Use "contradicts" only for evidence that actually conflicts with this
+  account. Use "open_question" for what the evidence leaves unsettled (an identity not established, a clock that cannot be checked, something not recorded)
 - differs_by: one short sentence saying what is different about this scenario compared with the others
 - less_supported: true only if this scenario takes an alternative that the evidence supports less well than the main reading, else false
 - steps: array of {{"actor", "node_id", "action", "narrative": "one sentence", "dt_sec_estimate", "phase": "short label", "item", "evidence_refs", "effects", "observed_by"}}
@@ -225,6 +226,19 @@ REPAIR_SYSTEM_PROMPT = f"""You are repairing ONE candidate scenario for CaseWeav
 problems in it. Fix exactly those problems and change nothing else: keep the same story, the same people, the same position on the open questions
 and the same "differs_by". Do not add people, places or facts the evidence does not give. If a problem cannot be fixed without contradicting the
 evidence or changing the story, leave that part as it is.
+{_DATA_RULE}
+
+{_STEP_RULES}
+
+Respond with ONLY one JSON object with the same keys as the scenario you were given (title, hypothesis_summary, plausibility_estimate, actors,
+supporting_facts, contradicted_points, steps, differs_by, less_supported). No prose outside the JSON."""
+
+STRENGTHEN_SYSTEM_PROMPT = f"""You are improving ONE candidate scenario for CaseWeave, a police investigation-support tool, so that it rests on the evidence as well as it honestly can.
+Keep the same story, the same people and the same entry. Do NOT invent people, places, objects or facts. What you may do:
+- for every step, cite the ids of the evidence that really supports it (copy ids from the evidence list); use [] only for a step that is your own inference;
+- put each person's steps in the order the recorded evidence times give, so the order does not contradict the clocks;
+- add a step for a relevant observation from the list "NOT YET USED" if, and only if, it fits the story without changing it;
+- remove a step that nothing supports and that the story does not need.
 {_DATA_RULE}
 
 {_STEP_RULES}
@@ -252,7 +266,7 @@ than bending it.
 {_STEP_RULES}
 
 Respond with ONLY one JSON object with keys: title, hypothesis_summary, plausibility_estimate (0-100), actors
-[{{"id","label","role","start_offset_s","evidence_refs"}}], supporting_facts [{{"text","refs"}}], contradicted_points [{{"text","refs"}}],
+[{{"id","label","role","start_offset_s","evidence_refs"}}], supporting_facts [{{"text","refs"}}], contradicted_points [{{"text","refs","kind"}}],
 steps [{{"actor","node_id","action","narrative","dt_sec_estimate","phase","item","evidence_refs","effects","observed_by"}}].
 No prose outside the JSON."""
 
@@ -515,7 +529,11 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
 # problems the model can fix by rewriting steps; time conflicts with the evidence are NOT in this list, because
 # an alternative that cannot be squared with the evidence clocks should stay visibly flagged, not be bent to fit
 _REPAIRABLE = {"handover_apart", "locked_door_passed", "no_route", "unreachable", "path_blocked", "stop_blocked", "not_visible", "discontinuous"}
+# the best-supported reading is expected to agree with the evidence clocks, so a conflict there is a flaw to repair; an alternative that
+# takes the other reading of a disputed clock is allowed to stay in conflict, flagged
+_REPAIRABLE_MAIN = _REPAIRABLE | {"anchor_order_conflict", "anchor_time_conflict"}
 MAX_REPAIRS = 2
+STRONG_SCORE = 70      # below this the best scenario is improved once more; if it still falls short the screen says so plainly
 
 
 def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], ev: Dict[str, Any], ctx: Dict[str, Any], redactor, meta: Dict[str, Any],
@@ -525,7 +543,9 @@ def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], e
     out = []
     log = meta.setdefault("repairs", [])
     for s in scenarios:
-        problems = [v for v in s["validation"]["violations"] if v["code"] in _REPAIRABLE]
+        is_main = not ((s.get("branch") or {}).get("asked_to_decide"))
+        codes = _REPAIRABLE_MAIN if is_main else _REPAIRABLE
+        problems = [v for v in s["validation"]["violations"] if v["code"] in codes]
         if not problems or done >= MAX_REPAIRS:
             out.append(s)
             continue
@@ -533,6 +553,8 @@ def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], e
         raw = _scenario_raw_from_content(s)
         prompt = (f"Case ID: {case_id}\n\n{context}\n\n{locations}\n\nThe scenario to repair:\n{json.dumps(raw, default=str)[:12000]}\n\n"
                   "Problems the checker found (fix these):\n" + "\n".join(f"- {v['message']}" for v in problems[:8]) +
+                  ("\n\nFor a conflict with the evidence times: the cited evidence gives the order of events by its recorded times. Reorder the steps, or cite the "
+                   "evidence that really belongs to each step, so each person's steps follow that order." if any(v["code"].startswith("anchor_") for v in problems) else "") +
                   "\n\nReturn the corrected scenario.")
         entry = {"scenario": s["title"][:80], "problems": [v["message"][:160] for v in problems[:8]], "fixed": False}
         try:
@@ -542,7 +564,7 @@ def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], e
         except ModelFailure:
             rebuilt = None
         if rebuilt is not None:
-            left = [v for v in rebuilt["validation"]["violations"] if v["code"] in _REPAIRABLE]
+            left = [v for v in rebuilt["validation"]["violations"] if v["code"] in codes]
             if len(left) < len(problems):
                 rebuilt["branch"] = s.get("branch")
                 new = _finish_scenario(rebuilt, run_id=run_id, case_id=case_id, scenario_type="automated", provenance=s["provenance"])
@@ -553,6 +575,40 @@ def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], e
         log.append(entry)
         out.append(s)
     return out
+
+
+def _strengthen_best(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], ev: Dict[str, Any], ctx: Dict[str, Any], redactor, meta: Dict[str, Any],
+                     run_id: str, case_id: str, locations: str, context: str) -> List[Dict[str, Any]]:
+    """If no scenario reaches STRONG_SCORE, the best-supported one is rewritten once with the evidence it left unused in front of it. The new version
+    replaces the old one only if its score is higher and it has no more hard problems. Nothing is lifted by changing the formula."""
+    if not scenarios or max(s["score"]["verifiable_score"] for s in scenarios) >= STRONG_SCORE:
+        return scenarios
+    main = next((s for s in scenarios if not ((s.get("branch") or {}).get("asked_to_decide"))), max(scenarios, key=lambda s: s["score"]["verifiable_score"]))
+    obs = {o["observation_id"]: o for o in ev["observations"]}
+    unused = [i for i in (main.get("coverage") or {}).get("key_unused", []) if i in obs][:8]
+    lines = [f"- [{i}] ({obs[i].get('extracted_time') or 'untimed'}) {(obs[i].get('description') or '')[:260]}" for i in unused]
+    comp = main["score"]["components"]
+    prompt = (f"Case ID: {case_id}\n\n{context}\n\n{locations}\n\nThe scenario to improve:\n{json.dumps(_scenario_raw_from_content(main), default=str)[:12000]}\n\n"
+              f"Where it is weak: {comp['steps_citing_evidence']} of {comp['steps_total']} steps cite evidence; {comp['distinct_real_observations_cited']} distinct observations are cited.\n"
+              + ("NOT YET USED (relevant evidence this scenario does not cite):\n" + "\n".join(lines) + "\n" if lines else "")
+              + "\nProblems the checker found:\n" + ("\n".join(f"- {v['message']}" for v in main["validation"]["violations"][:6]) or "- none") + "\n\nReturn the improved scenario.")
+    entry = {"scenario": main["title"][:80], "from_score": main["score"]["verifiable_score"], "applied": False}
+    try:
+        call = _call_model(STRENGTHEN_SYSTEM_PROMPT, prompt, 8192, "strengthen", redactor)
+        meta["calls"].append(call["meta"])
+        rebuilt = _build_scenario(call["parsed"], layout, ev, ctx) if isinstance(call["parsed"], dict) else None
+    except ModelFailure:
+        rebuilt = None
+    if rebuilt is not None:
+        entry["to_score"] = rebuilt["score"]["verifiable_score"]
+        if rebuilt["score"]["verifiable_score"] > main["score"]["verifiable_score"] and len(rebuilt["validation"]["violations"]) <= len(main["validation"]["violations"]):
+            rebuilt["branch"] = main.get("branch")
+            new = _finish_scenario(rebuilt, run_id=run_id, case_id=case_id, scenario_type="automated", provenance=main["provenance"])
+            new["strengthened"] = {"from_score": entry["from_score"], "to_score": entry["to_score"]}
+            entry["applied"] = True
+            scenarios = [new if x is main else x for x in scenarios]
+    meta["strengthen"] = entry
+    return scenarios
 
 
 def _annotate_diversity(scenarios: List[Dict[str, Any]], layout: Dict[str, Any]) -> None:
@@ -581,7 +637,7 @@ def _scenario_raw_from_content(c: Dict[str, Any]) -> Dict[str, Any]:
     """The model's own proposal, as stored, so a scenario can be re-planned deterministically."""
     return {"title": c.get("title"), "hypothesis_summary": c.get("hypothesis_summary"), "plausibility_estimate": c.get("plausibility_estimate"),
             "supporting_facts": [{"text": f["text"], "refs": f["refs"] + f.get("invalid_refs", [])} for f in c.get("supporting_facts", [])],
-            "contradicted_points": [{"text": f["text"], "refs": f["refs"] + f.get("invalid_refs", [])} for f in c.get("contradicted_points", [])],
+            "contradicted_points": [{"text": f["text"], "refs": f["refs"] + f.get("invalid_refs", []), "kind": f.get("kind", "contradicts")} for f in c.get("contradicted_points", [])],
             "steps": c.get("steps_input", []), "actors": c.get("actors_input", []),
             "differs_by": c.get("differs_by", ""), "less_supported": c.get("less_supported", False)}
 
@@ -748,6 +804,9 @@ def run_generation(run_id: str, case_id: str, user: Dict[str, Any], mode: str = 
         if not scenarios:
             raise ModelFailure(f"The model did not produce usable scenarios ({failure_note}).")
         scenarios = _repair_scenarios(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)
+        scenarios = _repair_scenarios(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)   # a second round for what is still wrong
+        scenarios = _strengthen_best(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)
+        meta["best_score"] = max(s["score"]["verifiable_score"] for s in scenarios)
         scenarios.sort(key=lambda s: (-s["score"]["verifiable_score"], -s["plausibility_estimate"]))
         for i, s in enumerate(scenarios):
             s["rank"] = i + 1

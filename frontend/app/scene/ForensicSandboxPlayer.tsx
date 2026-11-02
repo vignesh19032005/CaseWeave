@@ -3,8 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { api, ApiError } from "../lib/api";
-import { clockAt, daylightAt, formatDuration, solve, totalDuration } from "./sandboxSolver";
+import { buildAxis, clockAt, daylightAt, formatDuration, fromDisplay, quietGaps, solve, toDisplay, totalDuration } from "./sandboxSolver";
 import type { CameraMode } from "./SandboxScene3D";
+import type { LabelMode } from "./SandboxLabels";
 import { BasisBadge, ComparisonMatrix, LayoutEditor, PhotoEvidence, RefChips, ReviewPanel, Section, SceneBoundary } from "./SandboxPanels";
 import type { EditOp, InspectedItem, Layout, PhotoLinks, SandboxReview, SandboxState, Scenario } from "./sandboxTypes";
 
@@ -35,7 +36,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
   const [speed, setSpeed] = useState(2);
   const [camera, setCamera] = useState<CameraMode>("overview");
   const [cutaway, setCutaway] = useState(true);
-  const [labels, setLabels] = useState(false);
+  const [labelMode, setLabelMode] = useState<LabelMode>("minimal");
   const [dragMode, setDragMode] = useState<"rotate" | "move">("rotate");
   const [level, setLevel] = useState<number | null>(null);
   const [overlayAll, setOverlayAll] = useState(false);
@@ -121,6 +122,9 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
   const retracted = useMemo(() => allScenarios.filter((s) => s.status === "retracted"), [allScenarios]);
   const scenario = scenarios.find((s) => s.scenario_id === activeId) ?? scenarios[0];
   const total = totalDuration(scenario);
+  const [skipQuiet, setSkipQuiet] = useState(true);
+  const axis = useMemo(() => buildAxis(total, skipQuiet ? quietGaps(scenario) : []), [scenario, total, skipQuiet]);
+  const shown = (secs: number) => toDisplay(axis, secs) / Math.max(axis.display, 1e-9);
   const sim = useMemo(() => solve(scenario, t, focusActor), [scenario, t, focusActor]);
   const clock = clockAt(scenario, sim.t);
   const daylight = daylightAt(clock?.text);
@@ -143,8 +147,8 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
       const dt = (now - last) / 1000;
       last = now;
       setT((p) => {
-        const n = p + dt * speed;
-        if (n >= total) {
+        const n = fromDisplay(axis, toDisplay(axis, p) + dt * speed);   // moves along the shortened clock, so quiet stretches pass in a blink
+        if (n >= total - 1e-6) {
           setPlaying(false);
           return total;
         }
@@ -156,7 +160,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current);
     };
-  }, [playing, speed, total]);
+  }, [playing, speed, total, axis]);
 
   function pick(id: string) {
     setActiveId(id);
@@ -277,6 +281,11 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
     <div className="flex flex-col border border-zinc-800 rounded-xl bg-zinc-950 overflow-hidden text-zinc-200">
       <div className="px-4 py-2 bg-amber-950/40 border-b border-amber-900/60 text-[11px] text-amber-200">{state.disclaimer}</div>
 
+      {status === "ready" && !readOnly && scenarios.length > 0 && Math.max(...scenarios.map((s) => s.score.verifiable_score)) < 70 && (
+        <div className="px-4 py-2 bg-amber-950/40 border-b border-amber-900 text-xs text-amber-200" data-testid="weak-banner">
+          No scenario is strongly supported by the evidence yet (best: {Math.max(...scenarios.map((s) => s.score.verifiable_score))} out of 100). The score only counts what the evidence backs, so this usually means thin or conflicting evidence, not a faulty scene. Adding evidence, or testing an officer theory, can raise it.
+        </div>
+      )}
       {state.stale && status !== "generating" && !readOnly && (
         <div className="px-4 py-2 bg-orange-950/50 border-b border-orange-900 text-xs text-orange-200">
           The evidence has changed since this scene was generated, so it may not reflect the current record.
@@ -401,6 +410,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                   <div className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-xs text-emerald-400" title={clock ? "Clock time comes from the case record at steps that cite timed evidence; between those it is an estimate" : "No step cites a timed observation, so no real clock time is shown"}>
                     {clock ? `${clock.text}${clock.estimated ? " est." : ""}` : "no clock"}
                     <span className="ml-2 text-[10px] text-zinc-500">{formatDuration(sim.t)} / {formatDuration(total)}</span>
+                    {axis.skipped > 1 && <span className="ml-2 text-[10px] text-sky-400" title="Playback skips long stretches where nobody is doing anything. Untick 'Skip quiet periods' to play it all.">skips {formatDuration(axis.skipped)}</span>}
                   </div>
                   {primary && (
                     <span className="text-xs text-zinc-200 font-semibold truncate max-w-md">
@@ -433,21 +443,34 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                       <button key={m} onClick={() => setDragMode(m)} className={`px-1.5 py-0.5 rounded ${dragMode === m ? "bg-indigo-600 text-white" : "text-zinc-400"}`}>{m === "rotate" ? "Rotate" : "Move"}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-1 text-[11px] text-zinc-400" title="Skips long stretches where nobody is doing anything, keeping the first and last moments of each"><input type="checkbox" checked={skipQuiet} onChange={(e) => setSkipQuiet(e.target.checked)} /> Skip quiet periods</label>
                   <label className="flex items-center gap-1 text-[11px] text-zinc-400"><input type="checkbox" checked={cutaway} onChange={(e) => setCutaway(e.target.checked)} /> Cutaway walls</label>
-                  <label className="flex items-center gap-1 text-[11px] text-zinc-400"><input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> All labels</label>
+                  <label className="flex items-center gap-1 text-[11px] text-zinc-400" title="Minimal: people, the active place and what you select. All: every object, door and camera. Labels move out of the way of people and fade while you drag.">
+                    Labels
+                    <select value={labelMode} onChange={(e) => setLabelMode(e.target.value as LabelMode)} className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5" aria-label="Labels">
+                      <option value="off">Off</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="all">All</option>
+                    </select>
+                  </label>
                 </div>
               </div>
 
               <div className="px-4 py-2 bg-zinc-900/90 border-b border-zinc-800">
-                <input type="range" min={0} max={total} step={0.1} value={Math.min(t, total)} onChange={(e) => { setT(parseFloat(e.target.value)); setPlaying(false); }} className="w-full accent-emerald-500" aria-label="Scenario time" />
+                <input type="range" min={0} max={axis.display} step={0.1} value={Math.min(toDisplay(axis, t), axis.display)} onChange={(e) => { setT(fromDisplay(axis, parseFloat(e.target.value))); setPlaying(false); }} className="w-full accent-emerald-500" aria-label="Scenario time" />
                 <div className="relative h-4 mt-0.5">
+                  {axis.pieces.filter((p) => p.gap).map((p) => (
+                    <span key={`gap-${p.t0}`} title={`Nothing happens between ${formatDuration(p.t0)} and ${formatDuration(p.t1)}; the middle is skipped when you play`} className="absolute top-0 -translate-x-1/2 text-[10px] text-zinc-500 select-none" style={{ left: `${((p.d0 + (p.d1 - p.d0) / 2) / Math.max(axis.display, 1e-9)) * 100}%` }} data-testid="skip-marker">
+                      ⋯ {formatDuration(p.t1 - p.t0 - (p.d1 - p.d0))} skipped
+                    </span>
+                  ))}
                   {scenario.plan.actors.filter((a) => !focusActor || a.id === focusActor).flatMap((a) => a.steps.map((st) => ({ a, st }))).map(({ a, st }) => (
                     <button
                       key={`${a.id}-${st.k}`}
                       onClick={() => { setT(st.arrive_s); setPlaying(false); }}
                       title={`${a.label}: ${st.k + 1}. ${st.label} (${st.action})`}
                       className="absolute top-0 -translate-x-1/2 text-[9px] w-4 h-4 rounded-full border text-black"
-                      style={{ left: `${(st.arrive_s / total) * 100}%`, background: a.color, borderColor: sim.actors.find((x) => x.id === a.id)?.step === st.k ? "#fff" : "#27272a" }}
+                      style={{ left: `${shown(st.arrive_s) * 100}%`, background: a.color, borderColor: sim.actors.find((x) => x.id === a.id)?.step === st.k ? "#fff" : "#27272a" }}
                     >
                       {st.k + 1}
                     </button>
@@ -470,7 +493,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                 <div className="lg:col-span-2 relative bg-[#0b1020] h-full">
                   <SceneBoundary resetKey={`${run?.run_id}-${scenario.scenario_id}`}>
                     <SandboxScene3D
-                      layout={layout} scenario={scenario} overlay={overlay} sim={sim} cutaway={cutaway} showLabels={labels}
+                      layout={layout} scenario={scenario} overlay={overlay} sim={sim} cutaway={cutaway} labelMode={labelMode}
                       camera={camera} focus={focus} selectedId={inspected?.id ?? null} maxLevel={level} daylight={daylight} dragMode={dragMode}
                       onInspect={(i) => { setInspected(i); if (i.focus) setFocus(i.focus); }}
                     />
@@ -509,6 +532,8 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
 
                   <Section title={scenario.scenario_type === "officer_custom" ? "Officer theory" : `Candidate #${scenario.rank}`}>
                     <p className="text-xs text-zinc-200 leading-relaxed">{scenario.hypothesis_summary}</p>
+                    {scenario.strengthened && <p className="text-[11px] text-emerald-300">Improved once with evidence it had left unused: the support score rose from {scenario.strengthened.from_score} to {scenario.strengthened.to_score}.</p>}
+                    {scenario.repair && <p className="text-[11px] text-sky-300">Repaired once for logical problems the checker found ({scenario.repair.problems_left} left).</p>}
                     {scenario.differs_by && <p className="text-[11px] text-indigo-300">What is different about this one: {scenario.differs_by}</p>}
                     {scenario.support_level === "less_supported" && <p className="text-[11px] text-amber-300">This is a less supported possibility: it takes an alternative the evidence leans away from. It is shown so you can test it, not because it is the likeliest.</p>}
                     {scenario.support_level === "alternative" && <p className="text-[11px] text-sky-300">An alternative reading of a question the evidence leaves open.</p>}
@@ -666,7 +691,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                     <Section title="Points against, or unresolved" tone="warn">
                       {scenario.contradicted_points.map((f, i) => (
                         <div key={i} className="text-[11px] text-zinc-300">
-                          • {f.text}
+                          <span className={`mr-1.5 px-1 rounded border text-[9px] uppercase ${f.kind === "open_question" ? "border-zinc-700 text-zinc-400" : "border-red-900 text-red-300"}`}>{f.kind === "open_question" ? "open question" : "contradicts"}</span>{f.text}
                           <div className="ml-3 mt-0.5"><RefChips refs={f.refs} index={index} /></div>
                         </div>
                       ))}
