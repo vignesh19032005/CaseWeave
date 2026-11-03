@@ -2,7 +2,7 @@
   "id": "JJ-2015-S10",
   "act": "Juvenile Justice (Care and Protection of Children) Act, 2015",
   "section": "10",
-  "title": "Juvenile Justice Act Section 10 \u2014 Apprehension of Child in Conflict with Law",
+  "title": "Juvenile Justice Act Section 10 — Apprehension of Child in Conflict with Law",
   "topic": "Child accused, age below 18, special juvenile police unit, no police lockup",
   "type": "statute",
   "cognizable": null,
@@ -15,5 +15,7 @@
     "Production before Juvenile Justice Board within 24 hours of apprehension",
     "Mandatory identity confidentiality under Section 74"
   ],
-  "text": "As soon as a child alleged to be in conflict with law is apprehended by the police, he shall be placed under the charge of the special juvenile police unit or the designated child welfare police officer, who shall produce the child before the Juvenile Justice Board without any loss of time and in no case beyond twenty-four hours of apprehension. In no case shall a child alleged to be in conflict with law be placed in a police lockup or lodged in a jail."
+  "text": "As soon as a child alleged to be in conflict with law is apprehended by the police, he shall be placed under the charge of the special juvenile police unit or the designated child welfare police officer, who shall produce the child before the Juvenile Justice Board without any loss of time and in no case beyond twenty-four hours of apprehension. In no case shall a child alleged to be in conflict with law be placed in a police lockup or lodged in a jail.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

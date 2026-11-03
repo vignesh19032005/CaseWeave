@@ -6,7 +6,7 @@ import { api, setToken, ApiError } from "../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -18,7 +18,7 @@ export default function LoginPage() {
     try {
       const data = await api.login(username, password);
       setToken(data.access_token);
-      router.push("/");
+      router.push(data.must_change_password ? "/change-password" : "/");
     } catch (e) {
       if (e instanceof ApiError) setError(e.message);
       else setError("Could not reach CaseWeave API. Is the backend running on port 8010?");
@@ -42,11 +42,13 @@ export default function LoginPage() {
           className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm mb-3"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
           autoFocus
         />
         <label className="block text-xs text-zinc-500 mb-1">Password</label>
         <input
           type="password"
+          autoComplete="current-password"
           className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm mb-4"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -59,7 +61,8 @@ export default function LoginPage() {
           {busy ? "Signing in..." : "Sign in"}
         </button>
         <p className="text-[11px] text-zinc-600 mt-4">
-          First run default: admin / changeme123 — rotate this immediately in a real deployment.
+          The administrator account is created on the first run of the API; its password is set by CASEWEAVE_ADMIN_PASSWORD, or, if that is not
+          set, you will be asked to choose a new one at first sign-in.
         </p>
       </form>
     </div>

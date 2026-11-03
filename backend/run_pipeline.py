@@ -26,6 +26,8 @@ GROUND_TRUTH_PATH = DATA_DIR / "ground_truth.json"
 
 
 def run():
+    # This demo rebuilds CW-001 from scratch. It resets the whole database first, which reset_db() only allows on a
+    # database whose name contains "test" and with CASEWEAVE_ALLOW_DB_RESET=1 (see db.reset_db).
     reset_db()
     print(f"=== CaseWeave Pipeline — {CASE_ID} ===\n")
 

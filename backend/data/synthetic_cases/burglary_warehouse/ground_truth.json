@@ -1,0 +1,26 @@
+{
+  "case": "SYN-BURG-01",
+  "synthetic": true,
+  "planted_contradictions": [
+    {
+      "id": "BURG-C1",
+      "topic": "when the van arrived",
+      "evidence": ["05_witness_statement_night_cleaner.txt", "04_cctv_service_lane_log.txt"],
+      "detail": "The cleaner puts the van's arrival at about 01:10; the camera shows it at 01:39:20 and the alarm first trips at 01:42:18."
+    },
+    {
+      "id": "BURG-C2",
+      "topic": "who locked up and when",
+      "evidence": ["06_witness_statement_keyholder.txt", "03_door_access_log.json"],
+      "detail": "The owner says K02 locked the customer door at about 18:00 and went home; the access log shows K02 re-entered at 23:48 and locked again at 00:03:55 (armed 00:05:10)."
+    },
+    {
+      "id": "BURG-C3",
+      "topic": "when the owner arrived",
+      "evidence": ["06_witness_statement_keyholder.txt", "02_alarm_panel_log.json"],
+      "detail": "The owner says he arrived about 02:20 after a call at about 02:00; the monitoring-station call is logged at 01:58:00 and the disarm at 02:21:30 (consistent), so this is a consistency control, not a contradiction."
+    }
+  ],
+  "controls": ["BURG-C3"],
+  "expected_scene": {"rooms": 3, "people": 2, "entry": "stockroom west window"}
+}

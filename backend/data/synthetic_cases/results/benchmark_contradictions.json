@@ -1,0 +1,154 @@
+{
+ "burglary_warehouse": {
+  "case_id": "CW-29338B",
+  "planted": 2,
+  "found": 2,
+  "controls": 1,
+  "controls_wrongly_flagged": 0,
+  "conflicts_reported_total": 5,
+  "conflicts_not_matching_a_planted_item": 1,
+  "rows": [
+   {
+    "id": "BURG-C1",
+    "topic": "when the van arrived",
+    "control": false,
+    "found": true,
+    "matching_conflicts": [
+     {
+      "a": "05_witness_statement_night_cleaner.txt",
+      "b": "04_cctv_service_lane_log.txt",
+      "question": "Can front-door camera or sensor logs and window-side footage around 01:55 establish whether person with the tool exited once via the door or the window, and is ",
+      "claim_a": "She left through her front door",
+      "claim_b": "The person who went in climbs back out through the window"
+     },
+     {
+      "a": "05_witness_statement_night_cleaner.txt",
+      "b": "04_cctv_service_lane_log.txt",
+      "question": "Between 01:10 and 01:39, did one or two vans arrive at the bottom of the lane, and are the witness timeline and the 01:39 source clock synchronized\u2014check CCTV/A",
+      "claim_a": "She heard a van pull in at the bottom of the lane",
+      "claim_b": "A light-coloured panel van with no visible markings stops at the lane's far (south) end"
+     }
+    ]
+   },
+   {
+    "id": "BURG-C2",
+    "topic": "who locked up and when",
+    "control": false,
+    "found": true,
+    "matching_conflicts": [
+     {
+      "a": "06_witness_statement_keyholder.txt",
+      "b": "03_door_access_log.json",
+      "question": "Check the card issuance/assignment register and any handover or sharing log for K02, and ask Tobias and person with the tool who physically held K02 at 00:03, 1",
+      "claim_a": "Colleague Tobias holds the other key card, K02",
+      "claim_b": "Entries from this record: 00:03 READER-CUSTOMER-DOOR recorded door_locked_from_outside with card K02, result ok; 02:19 READER-CUSTOMER-DOOR "
+     },
+     {
+      "a": "06_witness_statement_keyholder.txt",
+      "b": "03_door_access_log.json",
+      "question": "Who physically locked the customer door at about 18:02 \u2014 does CCTV or witness evidence show Tobias or person with the tool, and did Tobias possess or borrow per",
+      "claim_a": "Tobias told Halloran he locked the customer door from outside at about six in the evening",
+      "claim_b": "READER-CUSTOMER-DOOR recorded door_locked_from_outside with card K02, result ok"
+     }
+    ]
+   },
+   {
+    "id": "BURG-C3",
+    "topic": "when the owner arrived",
+    "control": true,
+    "found": false,
+    "matching_conflicts": []
+   }
+  ],
+  "other_conflicts": [
+   {
+    "a": "04_cctv_service_lane_log.txt",
+    "b": "02_alarm_panel_log.json",
+    "question": "Check the WINDOW-STK-W1 raw log and any video for 01:35-02:00 to determine whether the side window moved/opened only once, and verify clock synchronisation and ",
+    "claim_a": "The window moves inward",
+    "claim_b": "WINDOW-STK-W1 recorded window_state_open with state alarm in ZONE-3 at 2026-03-12T01:56:12"
+   }
+  ]
+ },
+ "road_accident_junction": {
+  "case_id": "CW-8BB5FF",
+  "planted": 3,
+  "found": 0,
+  "controls": 0,
+  "controls_wrongly_flagged": 0,
+  "conflicts_reported_total": 2,
+  "conflicts_not_matching_a_planted_item": 2,
+  "rows": [
+   {
+    "id": "RTC-C1",
+    "topic": "the driver's signal",
+    "control": false,
+    "found": false,
+    "matching_conflicts": []
+   },
+   {
+    "id": "RTC-C2",
+    "topic": "the driver's speed",
+    "control": false,
+    "found": false,
+    "matching_conflicts": []
+   },
+   {
+    "id": "RTC-C3",
+    "topic": "the time of the collision",
+    "control": false,
+    "found": false,
+    "matching_conflicts": []
+   }
+  ],
+  "other_conflicts": [
+   {
+    "a": "04_dashcam_transcript.txt",
+    "b": "07_ambulance_call_log.txt",
+    "question": "Review the underlying video, track, or sensor coordinates for Motorcycle rider at 18:42-18:43 to determine the actual direction of travel and confirm whether on",
+    "claim_a": "The motorcycle slides north",
+    "claim_b": "Motorcycle rider down"
+   },
+   {
+    "a": "04_dashcam_transcript.txt",
+    "b": "02_signal_phase_log.json",
+    "question": "Check the JCT-HM-04 signal phase diagram and raw controller log, plus any 18:42 CCTV, to confirm whether the Mill Street arm maps to Harbour_EW or is a separate",
+    "claim_a": "The Mill Street signal turns green",
+    "claim_b": "JCT-HM-04 Harbour_EW phase green"
+   }
+  ]
+ },
+ "indoor_assault_office": {
+  "case_id": "CW-E471A2",
+  "planted": 3,
+  "found": 0,
+  "controls": 0,
+  "controls_wrongly_flagged": 0,
+  "conflicts_reported_total": 0,
+  "conflicts_not_matching_a_planted_item": 0,
+  "rows": [
+   {
+    "id": "ASLT-C1",
+    "topic": "when the injury happened",
+    "control": false,
+    "found": false,
+    "matching_conflicts": []
+   },
+   {
+    "id": "ASLT-C2",
+    "topic": "whether C-017 was alone in the storeroom",
+    "control": false,
+    "found": false,
+    "matching_conflicts": []
+   },
+   {
+    "id": "ASLT-C3",
+    "topic": "where C-017 was at half past nine",
+    "control": false,
+    "found": false,
+    "matching_conflicts": []
+   }
+  ],
+  "other_conflicts": []
+ }
+}

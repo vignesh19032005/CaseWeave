@@ -1,0 +1,16 @@
+NORTHGATE DISTRICT POLICE (FICTIONAL) — CCTV EXTRACTION LOG
+Case reference: SYN-BURG-01 (synthetic demonstration case)
+Camera: CAM-LANE-02, fixed camera, low-light capable, facing the service lane that runs along the west wall of Kestrel Trade Supplies Unit 4.
+Camera clock offset checked against the NVR: none recorded.
+Extracted by: Constable J. Ostrander
+
+[01:36:05] Lane empty. A cat crosses the frame.
+[01:39:20] A light-coloured panel van with no visible markings stops at the lane's far (south) end and switches off its headlights.
+[01:40:10] Two people get out of the van, both in dark clothing. One carries a long tool. They walk north along the lane towards the unit's west wall.
+[01:41:50] Both people stand beneath the stockroom window. The one with the tool works at the window frame.
+[01:42:15] The window moves inward. One person climbs through the window feet first. The second stays outside at the sill.
+[01:47:30] The second person is handed a large cardboard box through the window and carries it to the van.
+[01:52:40] The second person returns to the window with an empty trolley, and receives a second box.
+[01:55:55] The person who went in climbs back out through the window. Both walk to the van carrying boxes. They load the van.
+[01:56:30] The van's headlights go on. The van leaves southwards.
+[01:57:00] Lane empty.

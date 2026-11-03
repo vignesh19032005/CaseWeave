@@ -10,8 +10,10 @@ ingest.py reads them directly, since there's nothing to "extract" from text
 that's already text. This module activates the moment a PDF/image/video/audio
 file is added to a case.
 """
+import functools
 import json
 import os
+import shutil
 import subprocess
 import urllib.request
 import uuid
@@ -29,34 +31,63 @@ _TESSERACT_DEFAULT = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 if os.path.exists(_TESSERACT_DEFAULT):
     pytesseract.pytesseract.tesseract_cmd = _TESSERACT_DEFAULT
 
-FFMPEG_DEFAULT = r"C:\Users\VIGNESH\AppData\Local\ffmpeg\ffmpeg-8.1.2-essentials_build\bin\ffmpeg.exe"
-FFMPEG_CMD = os.environ.get("FFMPEG_CMD", FFMPEG_DEFAULT if os.path.exists(FFMPEG_DEFAULT) else "ffmpeg")
+# ffmpeg: FFMPEG_CMD if set, otherwise whatever is on PATH. (There is deliberately no machine-specific default.)
+FFMPEG_CMD = os.environ.get("FFMPEG_CMD") or shutil.which("ffmpeg") or "ffmpeg"
+
+MAX_PDF_PAGES = 300          # pages read from one PDF
+MAX_OCR_PAGES = 30           # scanned pages OCR'd from one PDF (OCR is slow; the rest are listed as skipped)
+MAX_EXTRACT_FRAMES = 24      # frames written to disk for one video before sampling down for the vision model
+MAX_AUDIO_SECONDS = 780      # the hosted speech model rejects uploads over 25 MB; 13 minutes of 16 kHz mono WAV fits
+FFMPEG_TIMEOUT_S = 300
+
+
+@functools.lru_cache(maxsize=1)
+def _ocr_languages() -> str:
+    """English always; Tamil and Hindi too when their Tesseract language packs are installed (TESSERACT_LANGS overrides)."""
+    explicit = os.environ.get("TESSERACT_LANGS", "").strip()
+    if explicit:
+        return explicit
+    try:
+        have = set(pytesseract.get_languages(config=""))
+    except Exception:  # noqa: BLE001 - Tesseract missing or unreadable: the OCR call itself will report it
+        return "eng"
+    return "+".join(["eng"] + [lang for lang in ("tam", "hin") if lang in have])
 
 
 def extract_pdf(path: Path) -> list[dict]:
     """Returns one record per page: {page_number, text, method}. OCR fallback per page."""
+    import io
+
     records = []
+    ocr_done = 0
     doc = fitz.open(path)
-    for page_num, page in enumerate(doc, start=1):
-        text = page.get_text().strip()
-        method = "text_layer"
-        if not text:
-            # scanned page with no extractable text layer — render to image and OCR it
-            pix = page.get_pixmap(dpi=200)
-            img_bytes = pix.tobytes("png")
-            import io
-            img = Image.open(io.BytesIO(img_bytes))
-            text = pytesseract.image_to_string(img).strip()
-            method = "ocr_fallback"
-        records.append({"page_number": page_num, "text": text, "method": method})
-    doc.close()
+    try:
+        for page_num, page in enumerate(doc, start=1):
+            if page_num > MAX_PDF_PAGES:
+                records.append({"page_number": page_num, "text": f"(pages beyond {MAX_PDF_PAGES} were not read)", "method": "page_limit"})
+                break
+            text = page.get_text().strip()
+            method = "text_layer"
+            if not text:
+                if ocr_done >= MAX_OCR_PAGES:
+                    records.append({"page_number": page_num, "text": "", "method": "ocr_skipped_limit"})
+                    continue
+                # scanned page with no extractable text layer — render to image and OCR it
+                pix = page.get_pixmap(dpi=200)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                text = pytesseract.image_to_string(img, lang=_ocr_languages()).strip()
+                method = "ocr_fallback"
+                ocr_done += 1
+            records.append({"page_number": page_num, "text": text, "method": method})
+    finally:
+        doc.close()
     return records
 
 
 def extract_image_ocr(path: Path) -> dict:
     """OCR an image file. Returns {} text if the image has no legible text (expected for most photos)."""
-    img = Image.open(path)
-    text = pytesseract.image_to_string(img).strip()
+    with Image.open(path) as img:
+        text = pytesseract.image_to_string(img, lang=_ocr_languages()).strip()
     return {"text": text, "method": "ocr"}
 
 
@@ -70,11 +101,14 @@ def extract_video_frames(path: Path, out_dir: Path, interval_seconds: float = 2.
     out_dir.mkdir(parents=True, exist_ok=True)
     pattern = out_dir / "frame_%04d.png"
     cmd = [
-        FFMPEG_CMD, "-y", "-i", str(path),
-        "-vf", f"fps=1/{interval_seconds}",
+        FFMPEG_CMD, "-y", "-nostdin", "-i", str(path),
+        "-vf", f"fps=1/{interval_seconds}", "-frames:v", str(MAX_EXTRACT_FRAMES),
         str(pattern),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"ffmpeg frame extraction timed out after {FFMPEG_TIMEOUT_S}s")
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg frame extraction failed: {result.stderr[:500]}")
 
@@ -93,8 +127,11 @@ def extract_video_frames(path: Path, out_dir: Path, interval_seconds: float = 2.
 
 def extract_audio_track(video_path: Path, out_path: Path) -> Path:
     """Pulls the audio track out of a video file as a standalone .wav, via ffmpeg."""
-    cmd = [FFMPEG_CMD, "-y", "-i", str(video_path), "-vn", "-acodec", "pcm_s16le", "-ar", "16000", str(out_path)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = [FFMPEG_CMD, "-y", "-nostdin", "-i", str(video_path), "-vn", "-t", str(MAX_AUDIO_SECONDS), "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", str(out_path)]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"ffmpeg audio extraction timed out after {FFMPEG_TIMEOUT_S}s")
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg audio extraction failed: {result.stderr[:500]}")
     return out_path
@@ -139,9 +176,12 @@ def evidence_to_text(path: Path, evidence_type: str, work_dir: Path) -> tuple[st
         return path.read_text(encoding="utf-8", errors="replace"), "plain_text"
 
     if evidence_type == "pdf":
-        pages = json.loads(run_extraction_sandboxed("pipeline.extract_worker", "pdf", str(path), timeout_seconds=180))
+        pages = json.loads(run_extraction_sandboxed("pipeline.extract_worker", "pdf", str(path), timeout_seconds=600))
         text = "\n\n".join(f"[page {p['page_number']} · {p['method']}]\n{p['text']}" for p in pages if p["text"])
-        return (text or None), "pdf_" + ",".join(sorted({p["method"] for p in pages}))
+        skipped = [p["page_number"] for p in pages if p["method"] in ("ocr_skipped_limit", "page_limit")]
+        if skipped:
+            text += f"\n\n(note: {len(skipped)} page(s) were not read because of size limits, starting at page {skipped[0]})"
+        return (text or None), "pdf_" + ",".join(sorted({p["method"] for p in pages if p["method"] not in ("page_limit",)}))
 
     if evidence_type == "image":
         # Two passes, combined: OCR for any legible on-screen text (signage,
@@ -194,7 +234,7 @@ def evidence_to_text(path: Path, evidence_type: str, work_dir: Path) -> tuple[st
 
 def _transcript_text(t: dict, label: str) -> str | None:
     if t.get("segments"):
-        lines = [f"[+{_fmt_offset(s['start'])} elapsed] {s['text']}" for s in t["segments"] if s.get("text")]
+        lines = [f"[+{_fmt_offset(s.get('start'))} elapsed] {s['text']}" for s in t["segments"] if s.get("text")]
         return f"{label} (offsets are elapsed time from start of recording, not wall-clock):\n" + "\n".join(lines)
     return f"{label}:\n{t['text']}" if t.get("text") else None
 
@@ -206,10 +246,18 @@ def transcribe_audio(path: Path) -> dict:
     Fallback Matrix — there's no Meta-hosted ASR API to call as primary yet,
     so Groq-hosted Whisper is used directly as documented there.
     """
-    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    from secrets_store import get_secret
+
+    api_key = (os.environ.get("GROQ_API_KEY") or get_secret("GROQ_API_KEY") or "").strip()
     if not api_key:
         raise LLMUnavailableError("GROQ_API_KEY not set — cannot transcribe audio")
+    from llm_client import provider_mode
+    if provider_mode() != "auto":
+        raise LLMUnavailableError(f"audio transcription needs the hosted speech service, which is not allowed in {provider_mode()} mode")
 
+    size = Path(path).stat().st_size
+    if size > 24 * 1024 * 1024:
+        raise LLMUnavailableError(f"audio file is {size // (1024 * 1024)} MB; the speech service accepts at most 25 MB. Split or compress it.")
     boundary = uuid.uuid4().hex
     with open(path, "rb") as f:
         audio_bytes = f.read()
@@ -236,8 +284,11 @@ def transcribe_audio(path: Path) -> dict:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:  # noqa: BLE001 - network and HTTP errors become one clear message
+        raise LLMUnavailableError(f"audio transcription failed: {type(e).__name__}") from e
 
     return {
         "text": result.get("text", ""),

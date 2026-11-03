@@ -21,7 +21,7 @@ def generate_report(case_id: str, timeline_events, conflicts, scenarios, legal_r
 
     lines = []
     lines.append(f"# CaseWeave Report — {case['title']} ({case_id})\n")
-    lines.append(f"Generated: {datetime.datetime.utcnow().isoformat(timespec='seconds')}Z\n")
+    lines.append(f"Generated: {datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds')}Z\n")
 
     lines.append("## 1. Case Overview\n")
     lines.append(f"Case ID: {case_id}")
@@ -46,7 +46,8 @@ def generate_report(case_id: str, timeline_events, conflicts, scenarios, legal_r
             lines.append(f"- Claim A ({c['time_a']}, `{c['source_a']}`): {c['claim_a']}")
             lines.append(f"- Claim B ({c['time_b']}, `{c['source_b']}`): {c['claim_b']}")
             lines.append(f"- Nature of conflict: {c.get('nature_of_conflict', '')}")
-            lines.append(f"- Verification question: {c['question']}\n")
+            lines.append(f"- Verification question: {c['question']}")
+            lines.append(f"- Review status: **{c.get('review_status') or 'unresolved'}**" + (f" — {c['review_note']}" if c.get('review_note') else "") + "\n")
     else:
         lines.append("No discrepancies detected.\n")
 
@@ -100,13 +101,14 @@ def generate_report(case_id: str, timeline_events, conflicts, scenarios, legal_r
     lines.append(f"- Total audit events logged: {audit_count}")
     lines.append(f"- Hash-chain integrity check: {'PASSED' if chain_ok else 'FAILED'}\n")
 
-    lines.append("## 9. Pilot Readiness Gap\n")
-    lines.append("AI stages (observation extraction, discrepancy debate, scenario generation) ran as live "
-                  "LLM calls via the Meta -> Groq -> Gemini fallback chain in backend/llm_client.py — the "
-                  "audit log records which provider answered. All AI output is investigative support, not "
-                  "a finding: every conflict and claim above must be verified against its cited source. "
-                  "Before any live case: security hardening, legal sign-off on schema, and real-casework "
-                  "validation are still required. See PLAN.md 'Pilot Readiness Gap & Next Steps'.\n")
+    lines.append("## 9. Notice on AI-assisted analysis\n")
+    lines.append("Observation extraction, the discrepancy debate, scenario generation and the incident narrative were produced "
+                 "with language models (Meta first; a local model, Groq or Gemini only if Meta could not answer — the audit log "
+                 "records which provider answered each step). Names and identifiers are redacted before text is sent, but "
+                 "place names, free-text addresses and anything inside images are not. Everything above is investigative "
+                 "support, not a finding: every conflict and claim must be verified against its cited source exhibit, and "
+                 "nothing here is a statutory conclusion of guilt. Use in proceedings requires review by counsel and a "
+                 "Section 63 BSA certificate for each electronic record.\n")
 
     out_path.write_text("\n".join(lines), encoding="utf-8")
     return out_path

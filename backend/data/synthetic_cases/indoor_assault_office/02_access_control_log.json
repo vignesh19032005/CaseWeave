@@ -1,0 +1,50 @@
+[
+ {
+  "timestamp": "2026-05-19T20:41:10",
+  "reader": "READER-STUDIO-DOOR",
+  "card": "C-041",
+  "result": "granted"
+ },
+ {
+  "timestamp": "2026-05-19T20:55:35",
+  "reader": "READER-STUDIO-DOOR",
+  "card": "C-017",
+  "result": "granted"
+ },
+ {
+  "timestamp": "2026-05-19T21:12:50",
+  "reader": "READER-STOREROOM",
+  "card": "C-017",
+  "result": "granted"
+ },
+ {
+  "timestamp": "2026-05-19T21:13:20",
+  "reader": "READER-STOREROOM",
+  "card": "C-041",
+  "result": "granted"
+ },
+ {
+  "timestamp": "2026-05-19T21:31:05",
+  "reader": "READER-STOREROOM",
+  "card": "C-017",
+  "result": "granted_exit"
+ },
+ {
+  "timestamp": "2026-05-19T21:31:40",
+  "reader": "READER-STUDIO-DOOR",
+  "card": "C-017",
+  "result": "granted"
+ },
+ {
+  "timestamp": "2026-05-19T21:39:15",
+  "reader": "READER-STUDIO-DOOR",
+  "card": "C-029",
+  "result": "granted"
+ },
+ {
+  "timestamp": "2026-05-19T22:02:00",
+  "reader": "READER-STUDIO-DOOR",
+  "card": "C-017",
+  "result": "granted_exit"
+ }
+]

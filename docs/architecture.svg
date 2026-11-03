@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>CaseWeave: the model proposes, the code decides</title>
+  <desc>Evidence goes in. Meta models read it and propose a layout and scenarios. Deterministic code lays them out, checks them and scores them. A second Meta model reviews. A person approves. Every step is hashed and audited.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#475569"/></marker>
+    <style>
+      .t{font-size:15px;fill:#0f172a}.s{font-size:12px;fill:#475569}.h{font-size:13px;font-weight:700;letter-spacing:.06em}
+      .m{fill:#e0ecff;stroke:#2563eb;stroke-width:2}.c{fill:#dcfce7;stroke:#16a34a;stroke-width:2}.p{fill:#fef3c7;stroke:#d97706;stroke-width:2}.g{fill:#f1f5f9;stroke:#64748b;stroke-width:2}
+      .ln{stroke:#475569;stroke-width:2;fill:none;marker-end:url(#a)}
+    </style>
+  </defs>
+  <rect width="1280" height="760" fill="#ffffff"/>
+  <text x="40" y="44" style="font-size:26px;font-weight:700;fill:#0f172a">CaseWeave: the model proposes, the code decides</text>
+  <text x="40" y="70" class="s">A Meta model never emits coordinates and never decides what is possible. Deterministic code lays the scene out and checks every scenario, and everything is hashed and audited.</text>
+
+  <!-- legend -->
+  <rect x="40" y="92" width="22" height="16" class="m"/><text x="70" y="105" class="s">Meta model proposes or reads (Meta Model API; local Llama in on-premise mode)</text>
+  <rect x="560" y="92" width="22" height="16" class="c"/><text x="590" y="105" class="s">Deterministic code decides (no model)</text>
+  <rect x="820" y="92" width="22" height="16" class="p"/><text x="850" y="105" class="s">A person decides</text>
+  <rect x="1000" y="92" width="22" height="16" class="g"/><text x="1030" y="105" class="s">Records</text>
+
+  <!-- row 1: evidence in -->
+  <rect x="40" y="140" width="190" height="104" rx="10" class="g"/>
+  <text x="56" y="166" class="h">EVIDENCE IN</text>
+  <text x="56" y="188" class="s">statements, logs (JSON), CCTV</text>
+  <text x="56" y="205" class="s">notes, PDFs, photos, audio</text>
+  <text x="56" y="228" class="s">SHA-256 hashed on upload</text>
+
+  <rect x="290" y="140" width="230" height="104" rx="10" class="m"/>
+  <text x="306" y="166" class="h">READ THE EVIDENCE</text>
+  <text x="306" y="188" class="s">Muse Wonder (text + vision)</text>
+  <text x="306" y="205" class="s">SAM 3.1 finds objects in photos</text>
+  <text x="306" y="228" class="s">Whisper / OCR for audio, scans</text>
+
+  <rect x="580" y="140" width="250" height="104" rx="10" class="c"/>
+  <text x="596" y="166" class="h">SCREEN AND CHECK TEXT</text>
+  <text x="596" y="188" class="s">instruction-injection screen</text>
+  <text x="596" y="205" class="s">names redacted before any call</text>
+  <text x="596" y="228" class="s">contradictions between sources</text>
+
+  <rect x="890" y="140" width="350" height="104" rx="10" class="m"/>
+  <text x="906" y="166" class="h">PROPOSE (JSON, no coordinates)</text>
+  <text x="906" y="188" class="s">rooms, doors, objects as sizes and relations</text>
+  <text x="906" y="205" class="s">several different scenarios, each step cites</text>
+  <text x="906" y="228" class="s">the evidence ids that support it</text>
+
+  <path class="ln" d="M230 192H288"/><path class="ln" d="M520 192H578"/><path class="ln" d="M830 192H888"/>
+
+  <!-- row 2: code decides -->
+  <rect x="40" y="320" width="270" height="132" rx="10" class="c"/>
+  <text x="56" y="346" class="h">LAY OUT THE SCENE</text>
+  <text x="56" y="368" class="s">geometry engine builds walls, doors, floors</text>
+  <text x="56" y="385" class="s">places furniture, checks it fits</text>
+  <text x="56" y="402" class="s">stated / inferred / assumed is tracked</text>
+  <text x="56" y="419" class="s">assumed things stay outlined in red</text>
+
+  <rect x="350" y="320" width="270" height="132" rx="10" class="c"/>
+  <text x="366" y="346" class="h">SIMULATE EACH SCENARIO</text>
+  <text x="366" y="368" class="s">real routes around walls and furniture</text>
+  <text x="366" y="385" class="s">doors locked, forced, opened in time</text>
+  <text x="366" y="402" class="s">walking speeds, hand-overs, who sees whom</text>
+  <text x="366" y="419" class="s">one shared clock from the evidence</text>
+
+  <rect x="660" y="320" width="290" height="132" rx="10" class="c"/>
+  <text x="676" y="346" class="h">INDEPENDENT VALIDATOR</text>
+  <text x="676" y="368" class="s">re-checks the plan from scratch</text>
+  <text x="676" y="385" class="s">physical faults rejected (walls, speed, jumps)</text>
+  <text x="676" y="402" class="s">score = documented rubric, not a probability</text>
+  <text x="676" y="419" class="s">contradictions 8 pts, open questions 2 pts</text>
+
+  <rect x="990" y="320" width="250" height="132" rx="10" class="m"/>
+  <text x="1006" y="346" class="h">REPAIR WITH TOOL CALLS</text>
+  <text x="1006" y="368" class="s">model calls check_scenario (our</text>
+  <text x="1006" y="385" class="s">validator) as a tool, fixes, re-checks;</text>
+  <text x="1006" y="402" class="s">we keep what the checker prefers.</text>
+  <text x="1006" y="419" class="s">Meta Model API function calling</text>
+
+  <path class="ln" d="M1065 244V318"/>
+  <path class="ln" d="M310 386H348"/><path class="ln" d="M620 386H658"/><path class="ln" d="M950 386H988"/>
+  <path class="ln" d="M1065 244 C1065 280 175 270 175 318"/>
+
+  <!-- row 3: review and people -->
+  <rect x="40" y="530" width="330" height="116" rx="10" class="m"/>
+  <text x="56" y="556" class="h">SECOND-MODEL REVIEW (VISION)</text>
+  <text x="56" y="578" class="s">sees plan-view pictures at every key moment</text>
+  <text x="56" y="595" class="s">and the case photos; findings must cite a</text>
+  <text x="56" y="612" class="s">real step, picture or evidence id or are dropped</text>
+  <text x="56" y="634" class="s">an opinion, never proof</text>
+
+  <rect x="420" y="530" width="330" height="116" rx="10" class="p"/>
+  <text x="436" y="556" class="h">PERSON REVIEWS AND APPROVES</text>
+  <text x="436" y="578" class="s">approves the layout, retracts a scenario,</text>
+  <text x="436" y="595" class="s">tests their own theory, orders the evidence,</text>
+  <text x="436" y="612" class="s">sees 3D playback, who-saw-whom cones,</text>
+  <text x="436" y="634" class="s">photo readings marked inferred</text>
+
+  <rect x="800" y="530" width="440" height="116" rx="10" class="g"/>
+  <text x="816" y="556" class="h">RECORDS</text>
+  <text x="816" y="578" class="s">immutable versioned runs, content hashes</text>
+  <text x="816" y="595" class="s">hash-chained audit log, who did what and when</text>
+  <text x="816" y="612" class="s">export pack + PDF with limits stated plainly</text>
+  <text x="816" y="634" class="s">scenarios, not findings of fact</text>
+
+  <path class="ln" d="M820 452 C820 490 205 480 205 528"/>
+  <path class="ln" d="M370 588H418"/><path class="ln" d="M750 588H798"/>
+
+  <text x="40" y="700" class="s">Provider order: Meta Model API first, then a local Llama server (Ollama) if configured, then fallbacks. Modes: auto, meta_only, local_only (nothing leaves the building).</text>
+  <text x="40" y="722" class="s">Every number in the benchmark comes from fictional cases with planted, documented contradictions (see docs/BENCHMARKS.md).</text>
+</svg>

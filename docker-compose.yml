@@ -1,0 +1,25 @@
+# Infrastructure for CaseWeave: MySQL and Redis, bound to this machine only.
+# The app itself runs on the host (see README "Run it"). Nothing here is exposed to the network.
+# Set MYSQL_PASSWORD (and optionally REDIS_PASSWORD) in your shell or in a .env file next to this file.
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-caseweave}
+      MYSQL_USER: ${MYSQL_USER:-caseweave}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+    ports: ["127.0.0.1:3307:3306"]
+    volumes: ["caseweave_mysql:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["127.0.0.1:6379:6379"]
+volumes:
+  caseweave_mysql:

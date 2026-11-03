@@ -2,7 +2,7 @@
   "id": "POCSO-2012-S19",
   "act": "Protection of Children from Sexual Offences (POCSO) Act, 2012",
   "section": "19",
-  "title": "POCSO Act Section 19 \u2014 Mandatory Reporting of Offences",
+  "title": "POCSO Act Section 19 — Mandatory Reporting of Offences",
   "topic": "Child sexual assault, statutory reporting duty, victim age under 18",
   "type": "statute",
   "cognizable": true,
@@ -14,5 +14,7 @@
     "Police officer must record information in child-friendly environment",
     "Child not to be detained in police station during night"
   ],
-  "text": "Any person who has apprehension that an offence under this Act is likely to be committed or has knowledge that such an offence has been committed, he shall provide such information to the Special Juvenile Police Unit or the local police. Failure to report by responsible persons is a punishable offence under Section 21."
+  "text": "Any person who has apprehension that an offence under this Act is likely to be committed or has knowledge that such an offence has been committed, he shall provide such information to the Special Juvenile Police Unit or the local police. Failure to report by responsible persons is a punishable offence under Section 21.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

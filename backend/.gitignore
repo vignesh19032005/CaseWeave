@@ -6,3 +6,7 @@ output_report_*.md
 certs/
 *.key
 *.log
+
+.generated_secrets
+report_data/
+.venv311/

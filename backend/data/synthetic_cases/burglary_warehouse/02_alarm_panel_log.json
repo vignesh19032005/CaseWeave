@@ -1,0 +1,72 @@
+[
+ {
+  "timestamp": "2026-03-12T00:05:10",
+  "zone": "ZONE-1",
+  "device": "PANEL-MAIN",
+  "event": "system_armed",
+  "state": "armed_by_keyholder_K02"
+ },
+ {
+  "timestamp": "2026-03-12T01:00:00",
+  "zone": "ZONE-1",
+  "device": "PANEL-MAIN",
+  "event": "heartbeat_ok",
+  "state": "nominal"
+ },
+ {
+  "timestamp": "2026-03-12T01:42:18",
+  "zone": "ZONE-3",
+  "device": "WINDOW-STK-W1",
+  "event": "glass_break_or_shock",
+  "state": "alarm"
+ },
+ {
+  "timestamp": "2026-03-12T01:42:40",
+  "zone": "ZONE-3",
+  "device": "PIR-STOCKROOM-1",
+  "event": "motion_detected",
+  "state": "alarm"
+ },
+ {
+  "timestamp": "2026-03-12T01:44:05",
+  "zone": "ZONE-4",
+  "device": "PIR-OFFICE-1",
+  "event": "motion_detected",
+  "state": "alarm"
+ },
+ {
+  "timestamp": "2026-03-12T01:44:55",
+  "zone": "ZONE-4",
+  "device": "SAFE-SENSOR-1",
+  "event": "safe_door_opened",
+  "state": "alarm"
+ },
+ {
+  "timestamp": "2026-03-12T01:51:30",
+  "zone": "ZONE-3",
+  "device": "PIR-STOCKROOM-1",
+  "event": "motion_detected",
+  "state": "alarm"
+ },
+ {
+  "timestamp": "2026-03-12T01:56:12",
+  "zone": "ZONE-3",
+  "device": "WINDOW-STK-W1",
+  "event": "window_state_open",
+  "state": "alarm"
+ },
+ {
+  "timestamp": "2026-03-12T01:58:00",
+  "zone": "ZONE-1",
+  "device": "PANEL-MAIN",
+  "event": "monitoring_station_call_placed",
+  "state": "info"
+ },
+ {
+  "timestamp": "2026-03-12T02:21:30",
+  "zone": "ZONE-1",
+  "device": "PANEL-MAIN",
+  "event": "keyholder_K01_disarm_on_arrival",
+  "state": "info"
+ }
+]

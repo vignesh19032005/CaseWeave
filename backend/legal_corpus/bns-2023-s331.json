@@ -2,7 +2,7 @@
   "id": "BNS-2023-S331",
   "act": "Bharatiya Nyaya Sanhita, 2023",
   "section": "331",
-  "title": "BNS Section 331 \u2014 Lurking House-Trespass or House-Breaking by Night",
+  "title": "BNS Section 331 — Lurking House-Trespass or House-Breaking by Night",
   "topic": "House-breaking by night, forced shutter entry, night intrusion",
   "type": "statute",
   "cognizable": true,
@@ -14,5 +14,8 @@
     "Entry effected through passage made by offender, breaking lock, or entering through unaccustomed opening",
     "Preparation made for causing hurt, assault, or wrongful restraint"
   ],
-  "text": "Whoever commits lurking house-trespass by night, or house-breaking by night, having made preparation for causing hurt to any person, or for assaulting any person, or for wrongfully restraining any person, or for putting any person in fear of hurt or of assault or of wrongful restraint, shall be punished with imprisonment for a term which may extend to fourteen years, and shall also be liable to fine. Applicable to forced shutter breaches with crowbars or cutting equipment during night hours."
+  "text": "Whoever commits lurking house-trespass by night, or house-breaking by night, having made preparation for causing hurt to any person, or for assaulting any person, or for wrongfully restraining any person, or for putting any person in fear of hurt or of assault or of wrongful restraint, shall be punished with imprisonment for a term which may extend to fourteen years, and shall also be liable to fine.",
+  "practice_note": "Applicable to forced shutter breaches with crowbars or cutting equipment during night hours.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

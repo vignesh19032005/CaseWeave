@@ -1,0 +1,117 @@
+{
+  "note": "Labelled claim pairs for measuring the discrepancy debate. 'label' is what a careful human reviewer would call the pair: conflicts (same event, the sources disagree), supports (same event, the sources agree), unrelated (different events). Add pairs from real, anonymised cases to make the numbers meaningful; a handful of pairs only shows gross failures.",
+  "pairs": [
+    {
+      "id": "alarm-vs-cctv-entry",
+      "label": "conflicts",
+      "a": {
+        "source_evidence_id": "ALARM_LOG",
+        "time": "02:23",
+        "description": "RFID-REAR-01 door_opened at rear_shutter_gate_b, status forced_breach"
+      },
+      "b": {
+        "source_evidence_id": "CCTV_LOG",
+        "time": "02:29",
+        "description": "Individual inserts tool into the bottom centre lock clasp of the Gate-B rolling shutter and lifts it"
+      }
+    },
+    {
+      "id": "jacket-colour",
+      "label": "conflicts",
+      "a": {
+        "source_evidence_id": "WITNESS_1",
+        "time": "21:40",
+        "description": "The man who ran out of the shop was wearing a red jacket"
+      },
+      "b": {
+        "source_evidence_id": "CCTV_LOG",
+        "time": "21:41",
+        "description": "Individual in a black jacket leaves the shop entrance and runs towards the main road"
+      }
+    },
+    {
+      "id": "door-state-morning",
+      "label": "conflicts",
+      "a": {
+        "source_evidence_id": "ALARM_LOG",
+        "time": "02:34",
+        "description": "RFID-REAR-01 door_closed at rear_shutter_gate_b, status contact_restored"
+      },
+      "b": {
+        "source_evidence_id": "STAFF_STATEMENT",
+        "time": "06:30",
+        "description": "The rear shutter was found standing wide open when I arrived to open the shop"
+      }
+    },
+    {
+      "id": "front-door-agree",
+      "label": "supports",
+      "a": {
+        "source_evidence_id": "ALARM_LOG",
+        "time": "22:10",
+        "description": "ACC-DOOR-01 front door opened, badge 4412"
+      },
+      "b": {
+        "source_evidence_id": "GUARD_STATEMENT",
+        "time": "22:10",
+        "description": "At about 10:10 PM I heard the front door open and saw the manager come in"
+      }
+    },
+    {
+      "id": "van-agree",
+      "label": "supports",
+      "a": {
+        "source_evidence_id": "CCTV_LOG",
+        "time": "23:05",
+        "description": "A white van stops at the kerb outside the warehouse gate"
+      },
+      "b": {
+        "source_evidence_id": "NEIGHBOUR_STATEMENT",
+        "time": "23:05",
+        "description": "A white van pulled up by the warehouse gate around five past eleven"
+      }
+    },
+    {
+      "id": "different-events-1",
+      "label": "unrelated",
+      "a": {
+        "source_evidence_id": "PHARMACIST_STATEMENT",
+        "time": "06:30",
+        "description": "Cash drawer found empty when the pharmacist opened the shop"
+      },
+      "b": {
+        "source_evidence_id": "CCTV_LOG",
+        "time": "02:15",
+        "description": "Street lamp outside the alley is flickering"
+      }
+    },
+    {
+      "id": "different-events-2",
+      "label": "unrelated",
+      "a": {
+        "source_evidence_id": "ALARM_LOG",
+        "time": "02:31",
+        "description": "PIR-FRONT-01 motion detected at the billing counter"
+      },
+      "b": {
+        "source_evidence_id": "POLICE_NOTE",
+        "time": "08:00",
+        "description": "Duty officer reached the station and logged the complaint"
+      }
+    },
+    {
+      "id": "bag-near-agreement",
+      "label": "supports",
+      "a": {
+        "source_evidence_id": "CCTV_LOG",
+        "time": "02:35",
+        "description": "Individual emerges under the shutter holding a heavy black nylon duffel bag in right hand"
+      },
+      "b": {
+        "source_evidence_id": "WITNESS_1",
+        "time": "02:35",
+        "description": "A few minutes later, by around 2:35 AM, I saw the same person jogging back out towards the main road carrying a large dark bag"
+      }
+    }
+  ]
+}
