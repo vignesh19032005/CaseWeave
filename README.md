@@ -8,7 +8,7 @@ Built by **Team AKASHI** for the **Meta AI Developer Hackathon** (Cerebral Valle
 
 | | |
 |---|---|
-| Demo video (under 3 minutes) | _paste the YouTube link here_ |
+| Demo video (under 3 minutes) | https://youtu.be/GKYcaDvdH5U |
 | How it works (diagram) | [docs/architecture.svg](docs/architecture.svg) |
 
 ![The model proposes, the code decides](docs/architecture.png)
