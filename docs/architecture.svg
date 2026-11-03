@@ -105,5 +105,4 @@
   <path class="ln" d="M370 588H418"/><path class="ln" d="M750 588H798"/>
 
   <text x="40" y="700" class="s">Provider order: Meta Model API first, then a local Llama server (Ollama) if configured, then fallbacks. Modes: auto, meta_only, local_only (nothing leaves the building).</text>
-  <text x="40" y="722" class="s">Every number in the benchmark comes from fictional cases with planted, documented contradictions (see docs/BENCHMARKS.md).</text>
 </svg>

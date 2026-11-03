@@ -5,7 +5,7 @@
 Without --reuse it creates a new case, uploads every evidence file through the real upload route, runs the analysis stages
 (observations, timeline, discrepancies, entities), then generates the scene and the scenarios, then runs the second-model review.
 With --reuse it skips the upload and analysis and only generates a new scene for the same case, so two provider modes can be compared on identical observations.
-Writes data/synthetic_cases/results/<folder>__<mode>.json with everything the benchmark and the demo need.
+Writes data/synthetic_cases/results/<folder>__<mode>.json with everything the demo needs.
 The cases are fictional, so nothing real is sent to any provider.
 """
 import json

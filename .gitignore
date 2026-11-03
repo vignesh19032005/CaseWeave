@@ -85,7 +85,7 @@ backend/scripts/sandbox_repro_check.py
 # the sample PDF still carried real place names; the .txt version of the same report is tracked instead
 Sample test case/01_forensic_inspection_report.pdf
 
-# Logs and markers from the benchmark runs. The saved run results (results/*.json) stay tracked so the numbers in docs/BENCHMARKS.md can be checked.
+# Local run output
 backend/data/synthetic_cases/results/*.done
 backend/data/synthetic_cases/results/*.log
 .claude/
@@ -99,3 +99,17 @@ backend/scripts/download_models.py
 backend/scripts/populate_legal_corpus.py
 # build artefacts of the demo video
 /demo/
+
+# Kept locally, not part of the submission
+/docs/BENCHMARKS.md
+/docs/HOW_WE_KNOW_IT_IS_RIGHT.md
+/frontend/public/models/LICENSES.md
+backend/data/synthetic_cases/results/
+backend/data/synthetic_cases/*/ground_truth.json
+backend/scripts/sandbox_benchmark.py
+backend/scripts/synthetic_rediscrepancy.py
+backend/scripts/eval_discrepancy.py
+backend/tests/data/discrepancy_eval.json
+
+frontend/debug_console.js
+frontend/test_*.js

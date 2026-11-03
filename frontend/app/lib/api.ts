@@ -223,10 +223,8 @@ export const api = {
   getLegalCompliance: (caseId: string) => request(`/cases/${caseId}/legal-compliance`),
   getLegalAdvisory: (caseId: string) => request(`/cases/${caseId}/legal-advisory`),
 
-<<<<<<< HEAD
   getSimulation: (caseId: string) => request(`/cases/${caseId}/simulation`),
   generateSimulation: (caseId: string) => request(`/cases/${caseId}/simulation/generate`, { method: "POST" }),
-=======
   // Scene reconstruction sandbox. GET never generates; generation is an explicit POST
   // that runs in the background and is polled via getSandbox.
   getSandbox: (caseId: string) => request(`/cases/${caseId}/sandbox`),
@@ -271,5 +269,4 @@ export const api = {
   getNarrative: (caseId: string) => request(`/cases/${caseId}/narrative`),
   downloadSandboxPdf: (caseId: string) => downloadFile(`/cases/${caseId}/sandbox/export.pdf`, `CaseWeave_Scene_Review_${caseId}.pdf`),
   downloadSandboxPack: (caseId: string) => downloadFile(`/cases/${caseId}/sandbox/export`, `CaseWeave_Scene_Review_Pack_${caseId}.json`),
->>>>>>> feature/investigative-sandbox
 };

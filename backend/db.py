@@ -190,7 +190,6 @@ SCHEMA_STATEMENTS = [
         computed_at VARCHAR(64),
         created_at VARCHAR(64)
     )""",
-<<<<<<< HEAD
     """CREATE TABLE IF NOT EXISTS case_simulations (
         case_id VARCHAR(64) PRIMARY KEY,
         frames_json LONGTEXT,
@@ -199,7 +198,7 @@ SCHEMA_STATEMENTS = [
         telemetry_json LONGTEXT,
         computed_at VARCHAR(64),
         created_at VARCHAR(64)
-=======
+    ) DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS sandbox_runs (
         run_id VARCHAR(64) PRIMARY KEY,
         case_id VARCHAR(64) NOT NULL,
@@ -278,7 +277,6 @@ SCHEMA_STATEMENTS = [
     """CREATE TABLE IF NOT EXISTS schema_migrations (
         name VARCHAR(80) PRIMARY KEY,
         applied_at VARCHAR(40)
->>>>>>> feature/investigative-sandbox
     )""",
 ]
 

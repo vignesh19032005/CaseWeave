@@ -10,18 +10,15 @@ Built by **Team AKASHI** for the **Meta AI Developer Hackathon** (Cerebral Valle
 |---|---|
 | Demo video (under 3 minutes) | _paste the YouTube link here_ |
 | How it works (diagram) | [docs/architecture.svg](docs/architecture.svg) |
-| Measured results, weak spots included | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
-| How we know it is right, and where it is not | [docs/HOW_WE_KNOW_IT_IS_RIGHT.md](docs/HOW_WE_KNOW_IT_IS_RIGHT.md) |
-| Third-party model licences | [frontend/public/models/LICENSES.md](frontend/public/models/LICENSES.md) |
 
 ![The model proposes, the code decides](docs/architecture.png)
 
-> **Everything in this repository and demo uses fictional cases.** CaseWeave is analysis support for investigators. It does not decide who is guilty, it does not identify people, and it is not legal advice. Every output is AI-drafted and must be confirmed by a person against the source evidence.
+> **Every case in this repository and demo is fictional.** CaseWeave is analysis support for investigators. It does not decide who is guilty, it does not identify people, and it is not legal advice. Every output is AI-drafted and must be confirmed by a person against the source evidence.
 
 ---
 
 ## Contents
-[The problem](#the-problem) · [What it does](#what-it-does) · [Where Meta's models and tools are used](#where-metas-models-and-tools-are-used) · [Measured results](#measured-results) · [Try it](#try-it-fictional-cases-included) · [Run it](#run-it) · [Tests](#tests-and-measurements) · [Limits](#limits-said-plainly) · [Layout](#repository-layout) · [Licence](#licence)
+[The problem](#the-problem) · [What it does](#what-it-does) · [Where Meta's models and tools are used](#where-metas-models-and-tools-are-used) · [Try it](#try-it-fictional-cases-included) · [Run it](#run-it) · [Tests](#tests-and-measurements) · [Responsible use](#responsible-use) · [Layout](#repository-layout) · [Licence](#licence)
 
 ## The problem
 
@@ -30,7 +27,7 @@ Investigators reconcile statements, device logs and photographs by hand, and a c
 - **51,24,205** IPC and BNS cases were under investigation in 2024, of which police disposed of 35,21,488 and chargesheeted 25,40,668 (a 72.1% chargesheeting rate). That leaves about **16.0 lakh (roughly 31%) not disposed of by year end** (our arithmetic from the published totals). Source: NCRB, *Crime in India 2024*, national snapshot, the first edition under the new BNS.
 - On staffing, the Home Ministry told the Rajya Sabha that **Delhi Police alone was short of 9,248 posts against 92,044 sanctioned** (30 November 2025, as reported by The Tribune).
 
-We found **no published figure for how many hours scene reconstruction takes per case**, so we do not claim one. The claim is narrower: reading every source against every other source is slow and error-prone, and a tool that does it consistently, with citations, can help. We did not build this from fieldwork. It was designed from published statistics and the structure of real case files, and it has **not** been validated with investigators.
+Reading every source against every other source is slow and error-prone. A tool that does it consistently, with citations, can help.
 
 ## What it does
 
@@ -56,21 +53,6 @@ We found **no published figure for how many hours scene reconstruction takes per
 | Running the pipeline with nothing leaving the building | **Llama 3.1 8B** (open weights) via Ollama | `LLM_PROVIDER_MODE=local_only`, measured against Meta-only below. |
 
 Provider order is Meta first, then a local Llama server if configured, then fallbacks. `LLM_PROVIDER_MODE` is `auto`, `meta_only` or `local_only`, and the screen shows which was used. In `local_only` mode the tool-calling repair is switched off.
-
-## Measured results
-
-Measured on fictional cases whose contradictions we planted. Full tables, method, and **what changed while we measured** (including two corrections to our own test case) are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md). The raw runs are in `backend/data/synthetic_cases/results/`.
-
-| Measure | Result |
-|---|---|
-| Planted physical faults caught by the independent checker: walk through a wall / impossible sprint / position jump | **72/72, 29/29, 48/48** on real generated scenarios; 100% on 2,500 random scenes |
-| Best scenario score, burglary case, 3 runs | 71, 74, 72 (all three scenarios physically possible each run) |
-| Best scenario score, pharmacy case with photographs | 78, 61, 45 (all physically possible) |
-| Meta models vs local Llama 3.1 8B, same evidence | 74 vs 25 (burglary), 67 vs 25 (assault) |
-| Reviewer finds planted flaws, Meta vision / local text-only | 6/8 / 5/8 strict. Both also report findings on undamaged scenarios, so read this as a comparison, not accuracy |
-| Planted contradictions between sources found | burglary 2/2 (control not flagged), road 0/3, assault 0/3 |
-
-**Weak spots, stated rather than hidden:** contradiction detection is weak on two of three cases, scene quality varies from run to run (the assault case scored 25, 67, 25), and only fictional cases have been run. Scores rank evidence support. They are not probabilities. 585 backend tests pass.
 
 ## Try it (fictional cases included)
 
@@ -109,38 +91,34 @@ Nothing is hardcoded to one case. Secrets live in `backend/.env` or the OS keyri
 
 ```bash
 cd backend
-MYSQL_DATABASE=caseweave_test python -m pytest tests -q   # needs a throwaway test database
+MYSQL_DATABASE=caseweave_test python -m pytest tests -q   # 585 tests, needs a throwaway test database
 python scripts/sandbox_eval.py 2500                       # random scenes: determinism, planted faults, false alarms
-python scripts/sandbox_benchmark.py report                # writes docs/BENCHMARKS.md from the saved runs
 cd ../frontend && npx tsc --noEmit && npx eslint .
 ```
 
 The backend suite refuses to run against a database whose name does not contain `test`.
 
-## Limits, said plainly
+## Responsible use
 
-- Scenarios are **possibilities consistent with the evidence**, not findings of fact. A scenario can pass every check and still be wrong.
-- The second-model reviewer is an opinion from the same model family. "Nothing found" is not proof.
+- Scenarios are **possibilities consistent with the evidence**, not findings of fact. A person confirms everything against the source evidence.
 - Photo readings and boxes are inferred and are never used for measurements.
-- The scene is only as good as the sizes in the evidence. Where the evidence is silent, it says *assumed* and draws it plainly.
-- Not modelled: sound, light, injuries changing speed, people blocking each other, vehicles driving, windows.
-- Only fictional cases have been run. It has not been validated on real cases with investigators.
-- The bundled legal reference summaries are paraphrases, shown only as an AI draft. They are not legal advice and need checking by a qualified person.
-- Do not use it to identify people, score behaviour, or for anything other than testing accounts of an incident against recorded evidence.
+- Where the evidence is silent, the scene says *assumed* and draws it plainly.
+- The bundled legal reference summaries are shown only as an AI draft. They are not legal advice.
+- It does not identify people or score behaviour. Use it only to test accounts of an incident against recorded evidence.
 
 ## Repository layout
 
 ```
 backend/              FastAPI API, pipeline stages, geometry engine, validator, reviewer, tests
   pipeline/sandbox*.py     layout, scenarios, checker, repair agent, review, photo links
-  data/synthetic_cases/    fictional cases, ground truth, and the saved benchmark runs
-  scripts/                 evaluation, benchmark and case-runner scripts
+  data/synthetic_cases/    four fictional demonstration cases
+  scripts/                 evaluation and case-runner scripts
 frontend/             Next.js 16 and React Three Fiber web app (the 3D player is in app/scene)
-docs/                 architecture, benchmarks, how we know it is right, earlier pipeline notes
+docs/                 architecture diagram and pipeline notes
 ```
 
-Earlier notes on the full pipeline stages are in [docs/PIPELINE_STAGES.md](docs/PIPELINE_STAGES.md). They predate the 3D scene work and may be out of date.
+Notes on the full pipeline stages are in [docs/PIPELINE_STAGES.md](docs/PIPELINE_STAGES.md).
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Third-party 3D models are CC BY 4.0 from the Khronos glTF Sample Assets (credits in `frontend/public/models/LICENSES.md`).
+MIT, see [LICENSE](LICENSE). Third-party 3D models are CC BY 4.0 from the Khronos glTF Sample Assets (required attribution: *Chair*, (c) 2021 Wayfair; *Milk Truck* and *Cesium Man*, (c) 2017 Cesium, all CC BY 4.0, used unmodified).

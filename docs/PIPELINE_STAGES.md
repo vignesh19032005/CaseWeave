@@ -1,4 +1,4 @@
-> Earlier notes on the full pipeline stages, written before the 3D scene work. Some details (accounts, setup, counts) may be out of date. The current overview is in the repository README.
+> Notes on the full pipeline stages. The current overview is in the repository README.
 
 # CaseWeave AI
 

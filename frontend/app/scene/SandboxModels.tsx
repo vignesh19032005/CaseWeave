@@ -4,7 +4,7 @@
 // - the object is not an assumed one (assumed objects stay visibly schematic, with their red outline),
 // - its label matches what the model actually is, and
 // - the real footprint has roughly the same proportions as the model, so nothing is stretched out of shape.
-// If the file is missing, slow or fails to load, the scene shows the parametric shape instead. Licences: public/models/LICENSES.md.
+// If the file is missing, slow or fails to load, the scene shows the parametric shape instead. Credits: see the Licence section of the README.
 import React, { Component, Suspense, useMemo } from "react";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";

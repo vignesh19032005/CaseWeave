@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "e2e/**",
     "scripts/**",
     "test_*.js",
+    "debug_console.js",
   ]),
 ]);
 
