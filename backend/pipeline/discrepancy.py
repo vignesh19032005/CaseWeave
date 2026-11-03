@@ -265,13 +265,25 @@ def _untimed_pairs(case_id: str, timeline_events: list, max_pairs: int = MAX_UNT
             score = sim + 0.10 * len(shared)
             if score >= MIN_UNTIMED_SCORE:
                 scored.append((score, c, e))
-    scored.sort(key=lambda x: -x[0])
-    used, pairs = {}, []
-    for _, c, e in scored:
-        if used.get(c["event_id"], 0) >= 2:     # at most two recorded events per statement, so a near-duplicate cannot crowd out the one that matters
-            continue
-        used[c["event_id"]] = used.get(c["event_id"], 0) + 1
-        pairs.append((c, e))
+    # One pair per statement and recorded source: the statement against the few entries of that source that match it best, shown together, so the
+    # debate sees the whole stretch of the record (for example every phase of a signal log) and not a single line picked by similarity.
+    by_claim: dict = {}
+    for score, c, e in scored:
+        by_claim.setdefault(c["event_id"], {"claim": c, "sources": {}})["sources"].setdefault(e["source_evidence_id"], []).append((score, e))
+    ranked = []
+    for entry in by_claim.values():
+        srcs = sorted(entry["sources"].items(), key=lambda kv: -max(sc for sc, _ in kv[1]))[:2]     # the two best-matching sources for this statement
+        for src, evs in srcs:
+            evs.sort(key=lambda x: -x[0])
+            top = sorted((e for _, e in evs[:5]), key=lambda e: e["time"])          # up to five matching entries, in time order
+            bundle = {"event_id": top[0].get("event_id"), "time": top[0]["time"], "source_evidence_id": src, "classification": "observed",
+                      "source_observation_id": top[0].get("source_observation_id"),
+                      "description": ("Entries from this record: " + "; ".join(e["time"] + " " + e["description"] for e in top)) if len(top) > 1 else top[0]["description"]}
+            ranked.append((evs[0][0], entry["claim"], bundle))
+    ranked.sort(key=lambda x: -x[0])
+    pairs = []
+    for _, c, bundle in ranked:
+        pairs.append((c, bundle))
         if len(pairs) >= max_pairs:
             break
     return pairs

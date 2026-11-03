@@ -2,12 +2,12 @@ NORTHGATE DISTRICT POLICE (FICTIONAL) — SCENE EXAMINATION REPORT
 Case reference: SYN-ASLT-01 (synthetic demonstration case)
 Examiner: Detective Constable R. Fenwick-Adeyemi
 Examined: 19 May 2026, 22:50 to 00:40
-Premises: second-floor offices of Halcyon Design Studio, 14 Quay Lane (fictional)
+Premises: ground-floor offices of Halcyon Design Studio, 14 Quay Lane (fictional)
 
 1. LAYOUT
-The studio is one floor of a small building, reached by an internal staircase and a lift. On the floor:
+The studio occupies the ground floor of a small building. On the floor:
 - Open-plan studio, about 9 m by 7 m, at the front (south). Desks run along the walls. Its door to the corridor is 1 m wide.
-- Stair and lift lobby, about 3 m by 3 m, at the west end of the corridor. It is open to the corridor through a 1.5 m wide opening with no door. A glass entrance door, 1 m wide, in the lobby's west wall opens from the stairwell landing and is the only way into the floor from outside.
+- Entrance lobby, about 3 m by 3 m, at the west end of the corridor. It is open to the corridor through a 1.5 m wide opening with no door. A glass entrance door, 1 m wide, in the lobby's west wall opens onto the street and is the only way into the offices from outside.
 - Corridor, 1.5 m wide and about 9 m long, running along the north side of the studio, from the lobby in the west to the storeroom in the east.
 - Storeroom, about 3 m by 3 m, at the east end of the corridor, with a single door (1 m wide) opening onto the corridor. It holds metal shelves of stationery and a large printer, and a grey metal cabinet 0.9 m wide and 1.8 m high against the east wall. The door has a keypad lock with an access-control reader.
 - Kitchenette, about 3 m by 3 m, between the studio and the storeroom, opening to the corridor.

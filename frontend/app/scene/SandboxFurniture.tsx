@@ -16,9 +16,9 @@ export type FurnitureKind = "counter" | "shelf" | "cabinet" | "safe" | "desk" | 
 const WORDS: [RegExp, FurnitureKind][] = [
   [/counter|bench|reception|desk top|checkout|bar\b/i, "counter"],
   [/shelv|shelf|rack|stack|bookcase|storage unit/i, "shelf"],
-  [/\bsafe\b|vault|strongbox/i, "safe"],
+  [/\bsafes?\b|vault|strongbox/i, "safe"],
   [/cabinet|locker|cupboard|wardrobe|almirah|drawer|fridge|refrigerator|freezer/i, "cabinet"],
-  [/\bdesk\b|workstation/i, "desk"],
+  [/\bdesks?\b|workstation/i, "desk"],
   [/table|workbench/i, "table"],
   [/chair|stool|seat|sofa|couch|bench seat/i, "chair"],
   [/\bbed\b|mattress|cot\b/i, "bed"],

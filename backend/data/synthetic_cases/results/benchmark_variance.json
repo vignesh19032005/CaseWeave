@@ -1,0 +1,91 @@
+{
+ "burglary_warehouse": {
+  "runs": [
+   {
+    "file": "burglary_warehouse__meta_only.json",
+    "best": 71,
+    "scores": [
+     71,
+     51,
+     48
+    ],
+    "physically_possible": 3,
+    "n": 3
+   },
+   {
+    "file": "burglary_warehouse__meta_only_r2.json",
+    "best": 74,
+    "scores": [
+     74,
+     53,
+     32
+    ],
+    "physically_possible": 3,
+    "n": 3
+   },
+   {
+    "file": "burglary_warehouse__meta_only_r3.json",
+    "best": 72,
+    "scores": [
+     72,
+     51,
+     46
+    ],
+    "physically_possible": 3,
+    "n": 3
+   }
+  ],
+  "best_mean": 72.3,
+  "best_stdev": 1.2,
+  "best_min": 71,
+  "best_max": 74
+ },
+ "road_accident_junction": {
+  "runs": [],
+  "best_mean": null,
+  "best_stdev": null,
+  "best_min": null,
+  "best_max": null
+ },
+ "indoor_assault_office": {
+  "runs": [
+   {
+    "file": "indoor_assault_office__meta_only.json",
+    "best": 25,
+    "scores": [
+     25,
+     25,
+     25
+    ],
+    "physically_possible": 0,
+    "n": 3
+   },
+   {
+    "file": "indoor_assault_office__meta_only_r2.json",
+    "best": 67,
+    "scores": [
+     67,
+     57,
+     52
+    ],
+    "physically_possible": 3,
+    "n": 3
+   },
+   {
+    "file": "indoor_assault_office__meta_only_r3.json",
+    "best": 25,
+    "scores": [
+     25,
+     25,
+     25
+    ],
+    "physically_possible": 0,
+    "n": 3
+   }
+  ],
+  "best_mean": 39,
+  "best_stdev": 19.8,
+  "best_min": 25,
+  "best_max": 67
+ }
+}

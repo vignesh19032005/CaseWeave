@@ -48,7 +48,7 @@ else:
     title = "[SYNTHETIC] " + folder.replace("_", " ").title()
     case_id = c.post("/cases", json={"title": title}).json()["case_id"]
     for p in sorted(SRC.iterdir()):
-        if p.name in ("ground_truth.json",) or p.suffix.lower() not in (".txt", ".json", ".png", ".jpg", ".pdf"):
+        if p.name in ("ground_truth.json",) or p.suffix.lower() not in (".txt", ".json", ".png", ".jpg", ".pdf") or p.name.lower() == "readme.md":
             continue
         r = c.post(f"/cases/{case_id}/evidence", files={"file": (p.name, p.read_bytes())})
         print("upload", p.name, r.status_code, flush=True)
@@ -67,6 +67,9 @@ if do_review and state.get("scenarios"):
     rv = c.post(f"/cases/{case_id}/sandbox/review")
     review = c.get(f"/cases/{case_id}/sandbox/review").json()
     print("review", rv.status_code, round(time.time() - t0), "s", flush=True)
+if "--photos" in sys.argv and state.get("scenarios"):
+    pl = c.post(f"/cases/{case_id}/sandbox/photo-links")
+    print("photo links", pl.status_code, flush=True)
 conflicts = c.get(f"/cases/{case_id}/conflicts").json()
 timeline = c.get(f"/cases/{case_id}/timeline").json()
 result = {"folder": folder, "case_id": case_id, "provider_mode": mode, "seconds": round(time.time() - t_all),

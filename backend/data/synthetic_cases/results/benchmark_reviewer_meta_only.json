@@ -1,0 +1,172 @@
+{
+ "provider_mode": "meta_only",
+ "with_images": true,
+ "cases": {
+  "burglary_warehouse": {
+   "clean_findings": 10,
+   "clean_verdict": "problems",
+   "model": "muse-wonder-1.0",
+   "rows": [
+    {
+     "flaw": "narrative_swap",
+     "planted_at": {
+      "step": 14,
+      "person": "Intruder who entered through window",
+      "types": [
+       "narrative_vs_action",
+       "evidence_mismatch",
+       "unsupported_claim",
+       "spatial"
+      ]
+     },
+     "found": true,
+     "found_loosely": true,
+     "findings": 10,
+     "dropped": 26,
+     "batches_failed": 0,
+     "model": "muse-wonder-1.0",
+     "seconds": 88.0
+    },
+    {
+     "flaw": "wrong_citation",
+     "planted_at": {
+      "step": 7,
+      "person": "Mr Emeka Halloran keyholder",
+      "types": [
+       "evidence_mismatch",
+       "unsupported_claim",
+       "timing",
+       "narrative_vs_action"
+      ]
+     },
+     "found": true,
+     "found_loosely": true,
+     "findings": 10,
+     "dropped": 28,
+     "batches_failed": 0,
+     "model": "muse-wonder-1.0",
+     "seconds": 78.2
+    },
+    {
+     "flaw": "role_swap",
+     "planted_at": {
+      "step": null,
+      "person": "Intruder who remained outside at window",
+      "types": [
+       "role",
+       "other"
+      ]
+     },
+     "found": false,
+     "found_loosely": false,
+     "findings": 10,
+     "dropped": 20,
+     "batches_failed": 0,
+     "model": "muse-wonder-1.0",
+     "seconds": 81.5
+    },
+    {
+     "flaw": "time_shift",
+     "planted_at": {
+      "step": 10,
+      "person": "Intruder who remained outside at window",
+      "types": [
+       "timing",
+       "evidence_mismatch"
+      ]
+     },
+     "found": false,
+     "found_loosely": false,
+     "findings": 10,
+     "dropped": 20,
+     "batches_failed": 0,
+     "model": "muse-wonder-1.0",
+     "seconds": 74.6
+    }
+   ]
+  },
+  "indoor_assault_office": {
+   "clean_findings": 10,
+   "clean_verdict": "problems",
+   "model": "muse-wonder-1.0",
+   "rows": [
+    {
+     "flaw": "narrative_swap",
+     "planted_at": {
+      "step": 5,
+      "person": "Mr Abiodun Castellanos",
+      "types": [
+       "narrative_vs_action",
+       "evidence_mismatch",
+       "unsupported_claim",
+       "spatial"
+      ]
+     },
+     "found": true,
+     "found_loosely": true,
+     "findings": 10,
+     "dropped": 31,
+     "batches_failed": 0,
+     "model": "muse-wonder-1.0",
+     "seconds": 92.0
+    },
+    {
+     "flaw": "wrong_citation",
+     "planted_at": {
+      "step": 2,
+      "person": "Ms Clementine Alvarenga",
+      "types": [
+       "evidence_mismatch",
+       "unsupported_claim",
+       "timing",
+       "narrative_vs_action"
+      ]
+     },
+     "found": true,
+     "found_loosely": true,
+     "findings": 10,
+     "dropped": 23,
+     "batches_failed": 0,
+     "model": "muse-wonder-1.0",
+     "seconds": 88.8
+    },
+    {
+     "flaw": "role_swap",
+     "planted_at": {
+      "step": null,
+      "person": "Ms Clementine Alvarenga",
+      "types": [
+       "role",
+       "other"
+      ]
+     },
+     "found": true,
+     "found_loosely": true,
+     "findings": 10,
+     "dropped": 1,
+     "batches_failed": 3,
+     "model": "muse-wonder-1.0",
+     "seconds": 45.3
+    },
+    {
+     "flaw": "time_shift",
+     "planted_at": {
+      "step": 5,
+      "person": "Mr Abiodun Castellanos",
+      "types": [
+       "timing",
+       "evidence_mismatch"
+      ]
+     },
+     "found": true,
+     "found_loosely": true,
+     "findings": 7,
+     "dropped": 0,
+     "batches_failed": 4,
+     "model": "muse-wonder-1.0",
+     "seconds": 30.6
+    }
+   ]
+  }
+ }
+}

@@ -7,7 +7,7 @@ This folder contains a complete, self-contained, realistic case package designed
 ## 1. Scenario Summary
 
 - **Case Title:** `MedVantage Pharmacy Burglary & Narcotics Theft`
-- **Location:** Kilpauk, Chennai, Tamil Nadu
+- **Location:** Northgate, Northgate City, the state
 - **Incident:** Nighttime forced entry at a commercial 24/7 pharmacy stockroom. The narcotics vault was pried open, high-value schedule H1 drugs (Fentanyl, Ketamine, Alprazolam) and INR 42,500 cash were stolen.
 - **Embedded Contradiction / Discrepancy for Stage 4 Debate:**
   - **The Intrusion Alarm Log** records the rear shutter breach at **`02:23:10`** (and tamper alarm at `02:22:45`).
@@ -23,7 +23,7 @@ Upload all of the following files directly in the **Evidence Explorer** tab:
 
 | Order | File Name | Type | Description |
 |---|---|---|---|
-| **1** | `01_forensic_inspection_report.pdf` | **Document (PDF)** | Formatted official forensic inspection report from Tamil Nadu Police FSD. |
+| **1** | `01_forensic_inspection_report.pdf` | **Document (PDF)** | Formatted official forensic inspection report from the state Police FSD. |
 | **2** | `02_intrusion_alarm_log.json` | **Structured Log (JSON)** | Hardware IoT alarm log from rear shutter tamper sensors & PIR motion detectors. |
 | **3** | `03_cctv_alleyway_log.txt` | **Text Document** | High-definition dome camera observation log & technical NVR clock offset note. |
 | **4** | `04_witness_statement_sundaram.txt` | **Witness Statement** | BNSS Section 180 statement from the commercial complex night watchman. |

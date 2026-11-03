@@ -1,4 +1,5 @@
 "use client";
+import Markdown from "../../lib/Markdown";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -497,7 +498,7 @@ function CaseStudio() {
             {t === "studio" && "Incident Reconstruction Studio"}
             {t === "conflicts" && `Conflict Analysis (${conflicts.length})`}
             {t === "patterns" && "Pattern Intelligence"}
-            {t === "legal" && "Legal Section & FIR Co-pilot"}
+            {t === "legal" && "Legal references (AI draft)"}
             {t === "report" && "Report"}
           </button>
         ))}
@@ -653,7 +654,7 @@ function EvidenceExplorer({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="border border-zinc-800 rounded-lg p-4">
           <h2 className="text-sm uppercase tracking-wide text-zinc-500 mb-3">Evidence ({evidence.length})</h2>
@@ -1546,7 +1547,7 @@ function ReportTab({ caseId, reportText, onLoad }: { caseId: string; reportText:
   }
 
   return (
-    <div className="max-w-3xl">
+    <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button className="bg-indigo-600 hover:bg-indigo-500 rounded px-4 py-2 text-sm font-medium" onClick={onLoad}>
           Load / refresh report
@@ -1564,12 +1565,11 @@ function ReportTab({ caseId, reportText, onLoad }: { caseId: string; reportText:
         <div className="mb-4 p-3 rounded border border-red-800 bg-red-950 text-red-300 text-sm">{pdfError}</div>
       )}
       {reportText ? (
-        <pre className="whitespace-pre-wrap text-xs border border-zinc-800 rounded-lg p-4 bg-zinc-900/40">
-          {reportText}
-        </pre>
+        <article className="w-full rounded-lg border border-zinc-300 bg-white shadow-lg px-8 py-7 md:px-12 md:py-9" data-testid="report-document">
+          <Markdown text={reportText} />
+        </article>
       ) : (
-        <div className="text-sm text-zinc-600">No report loaded yet — use Load/refresh for the raw text view, or
-          Download formatted PDF for a formatted document.</div>
+        <div className="text-sm text-zinc-600">No report loaded yet. Use Load / refresh to read it here, or Download formatted PDF for a printable copy.</div>
       )}
     </div>
   );
@@ -1632,7 +1632,7 @@ function PatternsTab({ caseId }: { caseId: string }) {
   const syn = patternsData?.comparative_synthesis;
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6">
       {/* Top Banner */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
         <div>
@@ -1952,17 +1952,17 @@ function LegalTab({ caseId }: { caseId: string }) {
   const complianceItems = compliance?.compliance_items || [];
 
   return (
-    <div className="space-y-8 max-w-6xl">
+    <div className="space-y-8">
       {/* Header */}
       <div className="border-b border-zinc-800 pb-4">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-white">Legal Section & Statutory FIR Co-pilot</h2>
-          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/60">
-            BNS / BNSS / BSA 2023 Compliant
+          <h2 className="text-lg font-semibold text-white">Legal references (AI draft, for review)</h2>
+          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-950 text-amber-300 border border-amber-800/60">
+            AI-drafted, not legal advice
           </span>
         </div>
         <p className="text-xs text-zinc-400 mt-1">
-          Automated penal charge recommendation mapped to evidentiary findings, age-based statutory bifurcations (JJ Act & POCSO), and strict BSA Section 63 electronic certification audit.
+          A draft list of provisions that an AI model suggests may relate to the recorded facts, with the evidence each suggestion rests on. It is a starting point for a legal professional, not legal advice, and not a charging decision. A qualified person must confirm every section against the official text before anything is relied on.
         </p>
       </div>
 
@@ -1972,7 +1972,7 @@ function LegalTab({ caseId }: { caseId: string }) {
 
       <div className="p-3 rounded border border-amber-800 bg-amber-950/40 text-amber-200 text-xs" data-testid="legal-verify-notice">
         {advisoryData?.notice ||
-          "AI suggestions drafted from this case's recorded facts. Check every section number, sub-clause and punishment against the official text of the Act before relying on it."}
+          "AI-drafted suggestions based on this case's recorded facts. This is not legal advice. Have a qualified legal professional confirm every section number, sub-clause, punishment and procedure against the official text of the Act, and the facts against the source evidence, before relying on any of it."}
       </div>
       {advisoryUnavailable && (
         <div className="p-3 rounded border border-zinc-700 bg-zinc-900/60 text-zinc-300 text-xs" data-testid="legal-unavailable">
@@ -1984,9 +1984,9 @@ function LegalTab({ caseId }: { caseId: string }) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
-            <span>⚖️</span> Recommended FIR Penal Sections ({recommendedSections.length})
+            <span>⚖️</span> Provisions an AI suggests may relate to the facts ({recommendedSections.length})
           </h3>
-          <span className="text-xs text-zinc-500">Drafted in compliance with BNSS Section 173</span>
+          <span className="text-xs text-zinc-500">Reference list only, not a charging decision</span>
         </div>
 
         {/* Accused Demographics Assessment Banner */}
@@ -1995,7 +1995,7 @@ function LegalTab({ caseId }: { caseId: string }) {
             <div className="flex items-center gap-2.5">
               <span className="text-base">👤</span>
               <div>
-                <span className="text-zinc-400">Suspect Demographics Assessment: </span>
+                <span className="text-zinc-400">Age information in the record: </span>
                 <span className="text-zinc-200 font-semibold">{demographic.age_assessed}</span>
               </div>
             </div>

@@ -92,7 +92,7 @@ def road():
 
 
 def assault():
-    img, d = canvas("Halcyon Design Studio, second floor (fictional)")
+    img, d = canvas("Halcyon Design Studio, ground floor (fictional)")
     room(d, 80, 300, 540, 380, "Open-plan studio", "about 9 m x 7 m")
     room(d, 80, 180, 540, 120, "Corridor", "1.5 m wide, about 9 m long")
     room(d, 620, 180, 200, 200, "Storeroom", "about 3 m x 3 m")
@@ -102,7 +102,7 @@ def assault():
     door(d, 620, 220, False, "storeroom door")
     door(d, 300, 300, True, "studio door")
     door(d, 620, 440, False, "kitchen door")
-    d.text((90, 140), "stair + lift lobby (west), glass entrance door", fill=SOFT, font=font(16))
+    d.text((90, 140), "entrance lobby (west), glass entrance door to the street", fill=SOFT, font=font(16))
     d.rectangle([75, 190, 85, 250], fill=ACCENT)
     d.ellipse([100, 215, 118, 233], outline=INK, width=3)
     d.text((124, 215), "camera CAM-CORR-01 looks east", fill=INK, font=font(14))

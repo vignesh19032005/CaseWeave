@@ -1,0 +1,11 @@
+[
+  {"timestamp": "2026-10-28T01:30:15", "device_id": "RFID-REAR-01", "event": "door_closed", "location": "rear_shutter_gate_b", "status": "nominal"},
+  {"timestamp": "2026-10-28T02:00:00", "device_id": "RFID-REAR-01", "event": "heartbeat_ok", "location": "rear_shutter_gate_b", "status": "nominal"},
+  {"timestamp": "2026-10-28T02:22:45", "device_id": "RFID-REAR-01", "event": "tamper_switch_triggered", "location": "rear_shutter_gate_b", "status": "alarm"},
+  {"timestamp": "2026-10-28T02:23:10", "device_id": "RFID-REAR-01", "event": "door_opened", "location": "rear_shutter_gate_b", "status": "forced_breach"},
+  {"timestamp": "2026-10-28T02:24:02", "device_id": "PIR-STOCK-02", "event": "motion_detected", "location": "narcotics_vault_zone", "status": "activity"},
+  {"timestamp": "2026-10-28T02:31:18", "device_id": "PIR-FRONT-01", "event": "motion_detected", "location": "billing_counter_area", "status": "activity"},
+  {"timestamp": "2026-10-28T02:34:50", "device_id": "RFID-REAR-01", "event": "door_closed", "location": "rear_shutter_gate_b", "status": "contact_restored"},
+  {"timestamp": "2026-10-28T03:00:00", "device_id": "RFID-REAR-01", "event": "heartbeat_ok", "location": "rear_shutter_gate_b", "status": "nominal"}
+]
+

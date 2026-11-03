@@ -682,14 +682,17 @@ def build_layout(raw: Any, known_refs: set) -> Dict[str, Any]:
             warnings.append(f"connection '{oid}': rooms '{ra['id']}' and '{rb['id']}' do not share a wall and the door was dropped")
             continue
         span = edge["hi"] - edge["lo"]
-        half = min(width / 2, max(0.25, span / 2 - JAMB_SOLID_M))
-        lo_c, hi_c = edge["lo"] + half + JAMB_SOLID_M, edge["hi"] - half - JAMB_SOLID_M
+        # the usual 0.5 m of solid wall beside a door is kept wherever the wall is long enough; on a short shared wall (a 1.5 m corridor) the margin is
+        # reduced to what is left, so a 1 m door still fits instead of being squeezed to 0.5 m
+        jamb = min(JAMB_SOLID_M, max(0.2, (span - width) / 2))
+        half = min(width / 2, max(0.25, span / 2 - jamb))
+        lo_c, hi_c = edge["lo"] + half + jamb, edge["hi"] - half - jamb
         if lo_c > hi_c:
             lo_c = hi_c = (edge["lo"] + edge["hi"]) / 2
         c = clamp(edge["lo"] + frac * span, lo_c, hi_c)
         op = {**base, "kind": "door", "wall": edge["wall"], "orient": edge["orient"], "line": edge["line"], "level": ra["level"],
               "position_frac": round(frac, 4), "gap_center_m": round(c, 3), "width_m": round(half * 2, 3), "passable": half * 2 >= MIN_PASSABLE_DOOR_M,
-              "_span": (edge["lo"], edge["hi"])}
+              "_span": (edge["lo"], edge["hi"]), "_edge_margin": min(JAMB_SOLID_M * 0.5, jamb)}
         register(op, edge["orient"], edge["line"], ra["level"])
         openings.append(op)
 
@@ -755,7 +758,8 @@ def build_layout(raw: Any, known_refs: set) -> Dict[str, Any]:
         prev_hi: Optional[float] = None
         for op in list(ops):
             half = op["width_m"] / 2
-            lo_ok, hi_ok = op["_span"][0] + half + JAMB_SOLID_M * 0.5, op["_span"][1] - half - JAMB_SOLID_M * 0.5
+            em = op.get("_edge_margin", JAMB_SOLID_M * 0.5)
+            lo_ok, hi_ok = op["_span"][0] + half + em, op["_span"][1] - half - em
             c = op["gap_center_m"]
             if prev_hi is not None:
                 c = max(c, prev_hi + JAMB_SOLID_M + half)
@@ -774,6 +778,7 @@ def build_layout(raw: Any, known_refs: set) -> Dict[str, Any]:
         else:
             op["pos_b"] = None
         op.pop("_span", None)
+        op.pop("_edge_margin", None)
         if not op["passable"]:
             warnings.append(f"opening '{op['id']}' is {op['width_m']:.2f} m wide, too narrow for a person to pass")
 

@@ -505,6 +505,8 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
     anchors = evd.compute_time_anchors(anchor_actors, ev, ctx.get("officer_times"))
     validation = geo.validate_plan(plan, layout)
     violations = list(validation["violations"]) + anchors["violations"]
+    # an alternative reading of a disputed clock is expected to disagree with the other source's time: those conflicts stay visible but are not physical impossibilities
+    soft_clock = [v for v in anchors["violations"] if bool(raw.get("less_supported")) and str(v.get("code", "")).startswith("anchor_")]
 
     door_warnings = [f"Evidence records '{d['label']}' as intact, but this scenario uses it." for d in plan.get("doors_used", []) if d["state"] == "intact"]
     cited_secs = []
@@ -538,7 +540,7 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
     score = evd.score_scenario(
         llm_estimate=int(geo.clamp(est if est is not None else 50.0, 0, 100)), steps=scoring_steps, dropped=len(plan["dropped_steps"]),
         supporting=[{**f, "refs": f["strong_refs"]} for f in supporting], contradicted=[{**f, "refs": f["strong_refs"]} for f in contradicted],
-        hard_violations=len(violations), observation_ids=ctx["obs_ids"],
+        hard_violations=len(violations) - len(soft_clock), soft_clock_conflicts=len(soft_clock), observation_ids=ctx["obs_ids"],
         cautions={"door_state": len(door_warnings), "cross_source_time": len(anchors["cross_source_notes"]), "cross_person_clock": len(anchors["cross_person_notes"]),
                   "unsupported_time_mentions": len(bad_times), "disputed_sources": len(disputed_hits), "weak_citations": len(weak_list),
                   "officer_time_differs": anchors["officer_differs"], **fid["caution_counts"]},
@@ -552,7 +554,7 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
         "plan": {"actors": plan["actors"], "dropped_steps": plan["dropped_steps"], "route_notes": plan["route_notes"], "doors_used": plan["doors_used"],
                  "effects": plan["effects"], "total_duration_s": plan["total_duration_s"], "total_distance_m": plan["total_distance_m"],
                  "time_adjustments": plan["time_adjustments"]},
-        "validation": {"is_physically_possible": not violations, "violations": violations, "warnings": warnings, "checks_run": validation["checks_run"]
+        "validation": {"is_physically_possible": len(violations) == len(soft_clock), "violations": violations, "warnings": warnings, "checks_run": validation["checks_run"]
                        + (["evidence clock times are consistent with the movement"] if anchors["anchors"] else []),
                        "checks_not_run": validation["checks_not_run"], "observation_checks": validation["observation_checks"],
                        "total_distance_m": plan["total_distance_m"], "total_duration_s": plan["total_duration_s"],
@@ -575,6 +577,7 @@ _REPAIRABLE = {"handover_apart", "locked_door_passed", "no_route", "unreachable"
 # takes the other reading of a disputed clock is allowed to stay in conflict, flagged
 _REPAIRABLE_MAIN = _REPAIRABLE | {"anchor_order_conflict", "anchor_time_conflict"}
 MAX_REPAIRS = 2
+MAX_STRENGTHEN_ROUNDS = 2
 STRONG_SCORE = 70      # below this the best scenario is improved once more; if it still falls short the screen says so plainly
 
 
@@ -916,7 +919,8 @@ def run_generation(run_id: str, case_id: str, user: Dict[str, Any], mode: str = 
             raise ModelFailure(f"The model did not produce usable scenarios ({failure_note}).")
         scenarios = _repair_scenarios(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)
         scenarios = _repair_scenarios(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)   # a second round for what is still wrong
-        scenarios = _strengthen_best(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)
+        for _round in range(MAX_STRENGTHEN_ROUNDS):           # a second try only happens while the best scenario is still under STRONG_SCORE
+            scenarios = _strengthen_best(scenarios, layout, ev, ctx, redactor, meta, run_id, case_id, locations, context)
         meta["best_score"] = max(s["score"]["verifiable_score"] for s in scenarios)
         scenarios.sort(key=lambda s: (-s["score"]["verifiable_score"], -s["plausibility_estimate"]))
         for i, s in enumerate(scenarios):

@@ -52,7 +52,7 @@ SCORE_FORMULA = (
     "evidence leaves unsettled (1 without); contradictions and open questions together capped at 30 "
     "- small fixed penalties for cautions (a door recorded as intact or locked that is used, times from different recordings, times in the text "
     "that no cited evidence gives, citations from disputed sources, citations that do not seem to concern the step; each capped). "
-    "Capped at 25 if any hard physical or timing violation exists. "
+    "Capped at 25 if any hard physical violation exists, or a timing conflict in the main reading. In an alternative reading that deliberately takes the other side of a disputed clock, each conflict with that clock costs 8 points instead (inside the same cap of 30). "
     "This is a ranking heuristic over checkable facts, not a probability that the scenario is true."
 )
 
@@ -487,7 +487,7 @@ def narrative_consistency(narrative: Optional[Dict[str, Any]], scenario_text: st
 # --------------------------------------------------------------------------
 
 def score_scenario(*, llm_estimate: int, steps: List[dict], dropped: int, supporting: List[dict], contradicted: List[dict],
-                   hard_violations: int, observation_ids: set, cautions: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+                   hard_violations: int, observation_ids: set, cautions: Optional[Dict[str, int]] = None, soft_clock_conflicts: int = 0) -> Dict[str, Any]:
     n = max(len(steps), 1)
     cited = sum(1 for s in steps if s.get("strong_refs", s.get("evidence_refs")))
     coverage = cited / n
@@ -501,7 +501,9 @@ def score_scenario(*, llm_estimate: int, steps: List[dict], dropped: int, suppor
     placed = n / (n + dropped) if (n + dropped) else 0.0
     base = 100.0 * (0.45 * coverage + 0.35 * support_term + 0.20 * placed)
     # a fact that contradicts the account costs more than an open question the evidence simply leaves unsettled; anything not marked is treated as a contradiction
-    pen_contra = min(30, sum((2 if f.get("kind") == "open_question" else 8) if f["refs"] else (1 if f.get("kind") == "open_question" else 3) for f in contradicted))
+    # an alternative reading that deliberately sides with the other source of a disputed clock disagrees with the first source's time: that costs like a contradicting
+    # fact (8 points each) instead of capping the whole scenario, which is kept for physical impossibility and for timing conflicts in the main reading
+    pen_contra = min(30, 8 * soft_clock_conflicts + sum((2 if f.get("kind") == "open_question" else 8) if f["refs"] else (1 if f.get("kind") == "open_question" else 3) for f in contradicted))
     caution_detail: Dict[str, int] = {}
     pen_caution = 0
     for name, count in (cautions or {}).items():
@@ -522,7 +524,7 @@ def score_scenario(*, llm_estimate: int, steps: List[dict], dropped: int, suppor
             "distinct_real_observations_cited": len(distinct_real), "support_term": round(support_term, 3),
             "steps_dropped_not_in_scene": dropped, "placed_share": round(placed, 3),
             "contradictions": sum(1 for f in contradicted if f.get("kind") != "open_question"), "open_questions": sum(1 for f in contradicted if f.get("kind") == "open_question"), "contradictions_with_citation": sum(1 for f in contradicted if f["refs"]),
-            "caution_penalty_points": pen_caution, "caution_breakdown": caution_detail, "hard_violations": hard_violations,
+            "caution_penalty_points": pen_caution, "caution_breakdown": caution_detail, "hard_violations": hard_violations, "alternative_clock_conflicts": soft_clock_conflicts,
             "base_before_penalties": round(base, 1), "penalty_points": pen_contra + pen_caution,
         },
         "cap_reason": cap_reason, "formula": SCORE_FORMULA,

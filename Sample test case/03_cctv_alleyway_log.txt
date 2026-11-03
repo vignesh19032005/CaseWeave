@@ -1,4 +1,4 @@
-TAMIL NADU POLICE DEPARTMENT — G-3 KILPAUK POLICE STATION
+NORTHGATE DISTRICT POLICE (FICTIONAL) — G-3 STATION
 CCTV CAMERA FOOTAGE EXTRACTION & OBSERVATION LOG
 
 Camera ID: CAM-ALLEY-04 (High-Definition Dome Camera, IR Night Vision)
@@ -9,7 +9,7 @@ Date of Incident: Night intervening 27/28 October 2026
 
 Time-coded Footage Log:
 [02:15:00] Alleyway is quiet. Street lamp illumination operational with flickering.
-[02:28:15] Timestamp on camera overlay shows 02:28:15 hrs. A male wearing a dark rain jacket with hood pulled up and white sports shoes enters camera frame from Poonamallee Road side alley corner.
+[02:28:15] Timestamp on camera overlay shows 02:28:15 hrs. A male wearing a dark rain jacket with hood pulled up and white sports shoes enters camera frame from Mill Road side alley corner.
 [02:28:30] Individual approaches Gate-B rolling shutter of MedVantage Pharmacy carrying a long metallic tool in right hand.
 [02:29:05] Individual inserts tool into the bottom center lock clasp of Gate-B shutter and applies forceful upward leverage.
 [02:29:40] Rolling shutter is lifted approximately 3 feet off the ground. The individual ducks beneath the shutter and enters the interior.

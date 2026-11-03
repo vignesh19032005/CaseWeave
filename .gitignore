@@ -62,3 +62,31 @@ backend/.generated_secrets
 backend/.venv311/
 frontend/e2e/out/
 frontend/.next-buildcheck/
+
+# Working notes and one-off helpers, kept locally and not part of the submission
+/PLAN.md
+/PROJECT_HANDOFF.md
+/project-status.md
+/SANDBOX_AUDIT.md
+/DATASET_SEARCH_PROMPT.md
+/SYNTHETIC_CASE_GENERATION_PROMPT.md
+frontend/AGENTS.md
+frontend/README.md
+frontend/public/file.svg
+frontend/public/globe.svg
+frontend/public/next.svg
+frontend/public/vercel.svg
+frontend/public/window.svg
+frontend/test_*.js
+backend/scripts/migrate_secrets.py
+backend/scripts/sandbox_logic_probe.py
+backend/scripts/sandbox_make_multifloor.py
+backend/scripts/sandbox_repro_check.py
+# the sample PDF still carried real place names; the .txt version of the same report is tracked instead
+Sample test case/01_forensic_inspection_report.pdf
+
+# Logs and markers from the benchmark runs. The saved run results (results/*.json) stay tracked so the numbers in docs/BENCHMARKS.md can be checked.
+backend/data/synthetic_cases/results/*.done
+backend/data/synthetic_cases/results/*.log
+.claude/
+*.done

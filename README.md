@@ -18,7 +18,7 @@ Built for the Meta AI Developer Hackathon. Everything shown in the demo and in t
 
 ## The problem
 
-Investigators reconcile statements, device logs and photographs by hand, and the contradictions between them are easy to miss. Some context from India's own statistics (NCRB, *Crime in India 2022*, Table 1A.5): police had **56,59,787 IPC cases under investigation** in 2022 and disposed of 36,60,786 of them, which leaves about **20 lakh (roughly 35%) still open at year end** (our arithmetic from NCRB's figures). The Bureau of Police Research & Development reports about **5.3 lakh vacancies in a sanctioned force of 26.2 lakh** (about 20%, Data on Police Organisations as on 1 Jan 2020, PIB). We found **no published figure for how many hours scene reconstruction takes per case**, so we do not claim one. The claim is narrower: reading every source against every other source is slow and error-prone, and a tool that does it consistently, with citations, is useful.
+Investigators reconcile statements, device logs and photographs by hand, and the contradictions between them are easy to miss. Some context from India's own statistics: in NCRB's *Crime in India 2024* (the first edition under the new BNS), police had **51,24,205 IPC and BNS cases under investigation**, disposed of 35,21,488, and chargesheeted 25,40,668 (a 72.1% chargesheeting rate). That leaves about **16.0 lakh cases (roughly 31%) not disposed of by year end** (our arithmetic from NCRB's totals). On staffing, the Home Ministry told the Rajya Sabha that Delhi Police alone was short of **9,248 posts against 92,044 sanctioned** (30 Nov 2025, as reported by The Tribune). We found **no published figure for how many hours scene reconstruction takes per case**, so we do not claim one. The claim is narrower: reading every source against every other source is slow and error-prone, and a tool that does it consistently, with citations, is useful.
 
 ## Where Meta's models and tools are used
 
@@ -42,9 +42,24 @@ Provider order is Meta first, then a local Llama server if configured, then fall
 - **Contradictions between sources** (for example a statement against a door log), each pointing at both sources.
 - **Second-model review**, **photo readings and photo boxes**, **officer's own theory** tested against the evidence, **audit trail**, **export pack and PDF**.
 
+## Measured results (fictional cases with planted answers)
+
+Full tables, method, and what changed while we measured are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Headlines:
+
+| Measure | Result |
+|---|---|
+| Planted physical faults caught by the independent checker (wall, sprint, jump) | 72/72, 29/29, 48/48 on real generated scenarios; 100% on 2,500 random scenes |
+| Best scenario score across 3 runs, burglary case | 71, 74, 72 (all three scenarios physically possible) |
+| Best scenario score across 3 runs, office assault case | 25, 67, 25 (high run-to-run variance) |
+| Meta-only vs local Llama 3.1 8B, same evidence | 74 vs 25 (burglary), 67 vs 25 (assault) |
+| Reviewer finds planted flaws (Meta vision / local text-only) | 6/8 / 5/8 strict, but both also report findings on undamaged scenarios, so read as a comparison, not accuracy |
+| Planted contradictions between sources found | burglary 2/2 (control not flagged), road 0/3, assault 0/3 |
+
+Weak spots are stated, not hidden: contradiction detection is weak on two of three cases, scene quality varies from run to run, and only fictional cases have been run. 585 backend tests pass.
+
 ## Try it (no setup of your own data needed)
 
-Three fictional cases are in [backend/data/synthetic_cases](backend/data/synthetic_cases): a night burglary, a two-vehicle collision at a signalled junction, and an assault in an office storeroom. Each has different kinds of evidence and a few contradictions planted on purpose, listed in its `ground_truth.json`. Load one with:
+Four fictional cases are in [backend/data/synthetic_cases](backend/data/synthetic_cases): a night burglary, a two-vehicle collision at a signalled junction (analysis only, the 3D builder draws building interiors), an assault in an office storeroom, and a pharmacy burglary with photographs. Each has different kinds of evidence and a few contradictions planted on purpose, listed in its `ground_truth.json`. Load one with:
 
 ```bash
 cd backend

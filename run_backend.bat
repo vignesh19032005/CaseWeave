@@ -6,9 +6,8 @@ REM   run_backend.bat --ssl    (Runs HTTPS with generated localhost cert)
 
 setlocal
 
-set PYTHON=C:\Users\VIGNESH\AppData\Local\Programs\Python\Python311\python.exe
-if not exist "%PYTHON%" set PYTHON=py -3.11
-if not exist "%PYTHON%" set PYTHON=python
+REM Uses the Python on your PATH. To use a specific one: set PYTHON=C:\path\to\python.exe before running.
+if "%PYTHON%"=="" set PYTHON=python
 
 cd /d "%~dp0backend"
 

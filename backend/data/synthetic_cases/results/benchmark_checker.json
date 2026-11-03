@@ -1,22 +1,45 @@
 {
  "burglary_warehouse": {
-  "scenarios": 3,
+  "runs": 3,
+  "scenarios": 9,
   "revalidation_identical": [
-   3,
-   3
+   9,
+   9
   ],
   "faults": {
    "wall": [
-    12,
-    12
+    54,
+    54
    ],
    "sprint": [
-    6,
-    6
+    29,
+    29
    ],
    "jump": [
-    8,
-    8
+    36,
+    36
+   ]
+  }
+ },
+ "indoor_assault_office": {
+  "runs": 3,
+  "scenarios": 9,
+  "revalidation_identical": [
+   9,
+   9
+  ],
+  "faults": {
+   "wall": [
+    18,
+    18
+   ],
+   "sprint": [
+    0,
+    0
+   ],
+   "jump": [
+    12,
+    12
    ]
   }
  }

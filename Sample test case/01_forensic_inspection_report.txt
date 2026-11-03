@@ -1,13 +1,13 @@
 TAMIL NADU POLICE DEPARTMENT
-GREATER CHENNAI POLICE — CRIME INVESTIGATION BRANCH
+NORTHGATE DISTRICT POLICE (FICTIONAL) — CRIME INVESTIGATION BRANCH
 CRIME SCENE EXAMINATION & PRELIMINARY FORENSIC REPORT
 
 Case Reference: CR-2026-TNP-0482
 Crime Head: Section 305 / 331(4) BNS (House trespass & theft)
-Station: G-3 Kilpauk Police Station
+Station: G-3 Northgate Police Station (fictional)
 Examining Officer: Inspector M. Karunakaran, Forensic Science Dept. (FSD)
 Date of Examination: 28-October-2026
-Location: MedVantage 24/7 Super Pharmacy & Surgicals, No. 44/2 Poonamallee High Road, Kilpauk, Chennai - 600010
+Location: MedVantage 24/7 Super Pharmacy & Surgicals, No. 44/2 Poonamallee High Road, Northgate, Northgate City - 600010
 
 1. POINT OF ENTRY & PERIMETER OBSERVATIONS
 The target premises occupies the ground floor of a commercial building. Initial inspection revealed the front glass entrance was intact and secured with internal electric shutter locks. Physical point of entry was established at the rear service alleyway shutter (designated Gate-B). The center padlock had been compromised by physical torsion using an iron lever/crowbar. Striation marks measuring 18mm width were lifted from the locking clasp. Fresh metal filings and paint flakes were recovered from the threshold.
@@ -30,5 +30,5 @@ Entry was executed by individuals possessing knowledge of the pharmacy floor pla
 [Signed]
 Inspector M. Karunakaran
 Forensic Scientific Officer, Grade-I
-Regional Forensic Science Laboratory, Chennai
+Regional Forensic Science Laboratory, Northgate City
 

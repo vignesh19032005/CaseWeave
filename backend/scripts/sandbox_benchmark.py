@@ -31,6 +31,22 @@ def load_run(folder: str, mode: str):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
+def all_runs(folder: str):
+    """Every saved Meta-only run of a case (the first and the repeats), as loaded result dicts."""
+    out = []
+    for p in sorted(RES.glob(f"{folder}__meta_only*.json")):
+        d = json.loads(p.read_text(encoding="utf-8"))
+        if (d.get("sandbox") or {}).get("scenarios"):
+            out.append(d)
+    return out
+
+
+def best_run(folder: str):
+    """The saved run whose best scenario scored highest, so the reviewer is tested on a scenario that is worth reviewing."""
+    runs = all_runs(folder)
+    return max(runs, key=lambda d: max(s["score"]["verifiable_score"] for s in d["sandbox"]["scenarios"]), default=None)
+
+
 def save(name: str, obj) -> None:
     (RES / f"benchmark_{name}.json").write_text(json.dumps(obj, indent=1, default=str), encoding="utf-8")
 
@@ -78,47 +94,50 @@ def checker():
     from pipeline import sandbox_geometry as sg
     out = {}
     for folder in CASES:
-        run = load_run(folder, "meta_only")
-        if not run or not run["sandbox"].get("scenarios"):
+        runs = all_runs(folder)
+        if not runs:
             continue
-        layout = run["sandbox"]["run"]["layout"]
         inj = {"wall": [0, 0], "sprint": [0, 0], "jump": [0, 0]}
         repro = [0, 0]
-        for scn in run["sandbox"]["scenarios"]:
-            plan = scn["plan"]
-            base = sg.validate_plan(plan, layout)
-            repro[1] += 1
-            # the checker is deterministic: the same plan and layout give the same verdict every time
-            repro[0] += json.dumps(sg.validate_plan(plan, layout), sort_keys=True, default=str) == json.dumps(base, sort_keys=True, default=str)
-            base_keys = {(v["code"], v.get("step"), v.get("actor")) for v in base["violations"]}
-            if base_keys:
-                continue   # faults are planted only into plans the checker found clean, so a catch is never a plan that was already flagged
+        n_scn = 0
+        for run in runs:
+            layout = run["sandbox"]["run"]["layout"]
+            for scn in run["sandbox"]["scenarios"]:
+                n_scn += 1
+                plan = scn["plan"]
+                base = sg.validate_plan(plan, layout)
+                repro[1] += 1
+                # the checker is deterministic: the same plan and layout give the same verdict every time
+                repro[0] += json.dumps(sg.validate_plan(plan, layout), sort_keys=True, default=str) == json.dumps(base, sort_keys=True, default=str)
+                base_keys = {(v["code"], v.get("step"), v.get("actor")) for v in base["violations"]}
+                if base_keys:
+                    continue   # faults are planted only into plans the checker found clean, so a catch is never a plan that was already flagged
 
-            def caught(bad):
-                return any((v["code"], v.get("step"), v.get("actor")) not in base_keys for v in sg.validate_plan(bad, layout)["violations"])
-            walks = [(ai, si) for ai, a in enumerate(plan["actors"]) for si, s in enumerate(a["segments"]) if s["kind"] == "transit" and s.get("route") and len(s["route"]) >= 2]
-            rng = random.Random(7)
-            for ai, si in rng.sample(walks, min(6, len(walks))):
-                bad = copy.deepcopy(plan)
-                seg = bad["actors"][ai]["segments"][si]
-                seg["route"][-1] = [seg["route"][-1][0] + 400.0, seg["route"][-1][1], seg["route"][-1][2]]
-                inj["wall"][1] += 1
-                inj["wall"][0] += caught(bad)
-                bad = copy.deepcopy(plan)
-                seg = bad["actors"][ai]["segments"][si]
-                if seg["t1"] - seg["t0"] > 1.0 and (seg.get("length_m") or 0) > 8.0:
-                    seg["t1"] = seg["t0"] + (seg["t1"] - seg["t0"]) / 10.0
-                    seg["v_max"] = (seg.get("v_max") or 1.4) * 10.0
-                    inj["sprint"][1] += 1
-                    inj["sprint"][0] += caught(bad)
-            dwell = [(a2, s2) for a2, a in enumerate(plan["actors"]) for s2, s in enumerate(a["segments"]) if s["kind"] == "dwell" and s2 > 0]
-            for a2, s2 in dwell[:4]:
-                bad = copy.deepcopy(plan)
-                p = bad["actors"][a2]["segments"][s2]["pos"]
-                bad["actors"][a2]["segments"][s2]["pos"] = [p[0] + 3.0, p[1], p[2] + 3.0]
-                inj["jump"][1] += 1
-                inj["jump"][0] += caught(bad)
-        out[folder] = {"scenarios": len(run["sandbox"]["scenarios"]), "revalidation_identical": repro, "faults": inj}
+                def caught(bad):
+                    return any((v["code"], v.get("step"), v.get("actor")) not in base_keys for v in sg.validate_plan(bad, layout)["violations"])
+                walks = [(ai, si) for ai, a in enumerate(plan["actors"]) for si, s_ in enumerate(a["segments"]) if s_["kind"] == "transit" and s_.get("route") and len(s_["route"]) >= 2]
+                rng = random.Random(7)
+                for ai, si in rng.sample(walks, min(6, len(walks))):
+                    bad = copy.deepcopy(plan)
+                    seg = bad["actors"][ai]["segments"][si]
+                    seg["route"][-1] = [seg["route"][-1][0] + 400.0, seg["route"][-1][1], seg["route"][-1][2]]
+                    inj["wall"][1] += 1
+                    inj["wall"][0] += caught(bad)
+                    bad = copy.deepcopy(plan)
+                    seg = bad["actors"][ai]["segments"][si]
+                    if seg["t1"] - seg["t0"] > 1.0 and (seg.get("length_m") or 0) > 8.0:
+                        seg["t1"] = seg["t0"] + (seg["t1"] - seg["t0"]) / 10.0
+                        seg["v_max"] = (seg.get("v_max") or 1.4) * 10.0
+                        inj["sprint"][1] += 1
+                        inj["sprint"][0] += caught(bad)
+                dwell = [(a2, s2) for a2, a in enumerate(plan["actors"]) for s2, s_ in enumerate(a["segments"]) if s_["kind"] == "dwell" and s2 > 0]
+                for a2, s2 in dwell[:4]:
+                    bad = copy.deepcopy(plan)
+                    pos = bad["actors"][a2]["segments"][s2]["pos"]
+                    bad["actors"][a2]["segments"][s2]["pos"] = [pos[0] + 3.0, pos[1], pos[2] + 3.0]
+                    inj["jump"][1] += 1
+                    inj["jump"][0] += caught(bad)
+        out[folder] = {"runs": len(runs), "scenarios": n_scn, "revalidation_identical": repro, "faults": inj}
         print(folder, out[folder])
     save("checker", out)
 
@@ -187,12 +206,12 @@ def reviewer(mode: str):
     kinds = ["narrative_swap", "wrong_citation", "role_swap", "time_shift"]
     out = {"provider_mode": mode, "with_images": mode != "local_only", "cases": {}}
     for folder in CASES:
-        run = load_run(folder, "meta_only")
-        if not run or not run["sandbox"].get("scenarios"):
+        run = best_run(folder)
+        if not run:
             continue
         case_id = run["case_id"]
         layout = run["sandbox"]["run"]["layout"]
-        scn = run["sandbox"]["scenarios"][0]
+        scn = max(run["sandbox"]["scenarios"], key=lambda s_: s_["score"]["verifiable_score"])
         ev = evd.gather_evidence(case_id)
         redactor = build_redactor(ev["entities"], redaction_enabled())
         known = evd.known_refs(ev)
@@ -248,7 +267,7 @@ def _pct(a, b):
 
 
 def _scene_row(folder, mode):
-    d = load_run(folder, mode)
+    d = best_run(folder) if mode == "meta_only" else load_run(folder, mode)
     if not d:
         return None
     sb = d["sandbox"]
@@ -281,20 +300,20 @@ def report():
             L.append(f"| {k} | {_pct(v['found'], v['planted'])} | {v['controls_wrongly_flagged']}/{v['controls']} | {v['conflicts_not_matching_a_planted_item']} |")
         L += ["", f"**Overall: {_pct(tp, tt)} planted contradictions found.** 'Other conflicts' are reported conflicts that match no planted item. They are not necessarily wrong (real cases hold more disagreements than the ones planted); they need a person to read them.", ""]
         for k, v in c.items():
-            L.append(f"- **{k}**: " + "; ".join(f"{r['id']} {'found' if r['found'] else 'MISSED'}" + (" (control)" if r["control"] else "") for r in v["rows"]))
+            L.append(f"- **{k}**: " + "; ".join((f"{r['id']} control wrongly flagged" if r["found"] else f"{r['id']} control correctly not flagged") if r["control"] else f"{r['id']} {'found' if r['found'] else 'MISSED'}" for r in v["rows"]))
         L.append("")
     k = _load("checker")
     if k:
         L += ["## 2. Planted physical faults caught by the independent checker", "",
               "On each case's real generated scenarios, faults are planted into plans the checker found clean: a walk pushed through a wall, a walk squeezed into a tenth of its time (a sprint nobody can sustain), and a stop that is not where the walk before it ended. The checker is the deterministic validator; no model is involved.", "",
-              "| Case | Scenarios | Same verdict on re-check | Walk through wall | Impossible sprint | Position jump |", "|---|---|---|---|---|---|"]
+              "| Case | Runs | Scenarios | Same verdict on re-check | Walk through wall | Impossible sprint | Position jump |", "|---|---|---|---|---|---|---|"]
         tot = {"wall": [0, 0], "sprint": [0, 0], "jump": [0, 0]}
         for case, v in k.items():
             f = v["faults"]
             for kk in tot:
                 tot[kk][0] += f[kk][0]
                 tot[kk][1] += f[kk][1]
-            L.append(f"| {case} | {v['scenarios']} | {_pct(*v['revalidation_identical'])} | {_pct(*f['wall'])} | {_pct(*f['sprint'])} | {_pct(*f['jump'])} |")
+            L.append(f"| {case} | {v['runs']} | {v['scenarios']} | {_pct(*v['revalidation_identical'])} | {_pct(*f['wall'])} | {_pct(*f['sprint'])} | {_pct(*f['jump'])} |")
         L += ["", f"**Overall: wall {_pct(*tot['wall'])}, sprint {_pct(*tot['sprint'])}, jump {_pct(*tot['jump'])}.** The same check on 2,500 random scenes (`scripts/sandbox_eval.py`) is the larger sample.", ""]
     L += ["## 3. Meta-only vs local Llama on the same case", "",
           "Same evidence observations (read once by Meta). Then the scene and scenarios are generated twice: with `LLM_PROVIDER_MODE=meta_only` (Muse Wonder through the Meta Model API) and with `LLM_PROVIDER_MODE=local_only` (Llama 3.1 8B on a local Ollama server, nothing leaves the machine).", "",
@@ -303,13 +322,13 @@ def report():
         for mode in ("meta_only", "local_only"):
             r = _scene_row(folder, mode)
             if r:
-                L.append(f"| {folder} | {mode} | {r['status']} | {r['rooms']} | {r['scenarios']} | {r['best']} | {r['possible']}/{r['scenarios']} | {r['repairs_fixed']}/{r['repairs']} ({r['agent_repairs']}) | {r['seconds']} s |")
+                L.append(f"| {folder} | {mode}{' (best of ' + str(len(all_runs(folder))) + ' runs)' if mode == 'meta_only' else ''} | {r['status']} | {r['rooms']} | {r['scenarios']} | {r['best']} | {r['possible']}/{r['scenarios']} | {r['repairs_fixed']}/{r['repairs']} ({r['agent_repairs']}) | {r['seconds']} s |")
     L.append("")
     rm, rl = _load("reviewer_meta_only"), _load("reviewer_local_only")
     if rm or rl:
         L += ["### Reviewer: planted flaws found", "",
               "Flaws planted into each case's top scenario, one kind at a time: a step's sentence contradicting its action, a step citing unrelated evidence, a person given the wrong role, and a step time pushed an hour late. A flaw counts as found when a finding points at the damaged step (or person). 'Loose' also accepts a finding of the right type anywhere.", "",
-              "| Reviewer | Strict | Loose | Findings on the clean scenarios (noise) |", "|---|---|---|---|"]
+              "| Reviewer | Strict | Loose | Findings on each clean (undamaged) scenario |", "|---|---|---|---|"]
         for name, r in (("Meta Muse Wonder, with plan-view pictures and photos", rm), ("Local Llama 3.1 8B, text only", rl)):
             if not r:
                 continue
@@ -325,6 +344,12 @@ def report():
             best = [r["best"] for r in v["runs"]]
             L.append(f"| {case} | {len(best)} | {best} | {v['best_mean']} | {v['best_stdev']} | {v['best_min']} to {v['best_max']} |")
         L.append("")
+    L += ["## What changed while we measured (so the numbers are not read as a clean first attempt)", "",
+          "1. **Detector topics.** The contradiction detector only knew burglary vocabulary (doors, entry, alarm), so the road case found nothing. We added generic topics (signals, speed, collision or injury, emergency calls, access control) and a second pass that pairs an untimed statement with recorded entries. Results before that change are kept in `benchmark_contradictions_before_generic_topics.json`.",
+          "2. **The assault case text was corrected twice.** The first version never said how anyone enters, and the second described an upper floor, which the scene builder cannot enter from outside. Both earlier runs are kept in `results/old_rubric/`. The case is now a ground-floor office with a stated street entrance.",
+          "3. **A door-width bug.** A 1 m door in a 1.5 m corridor wall was squeezed to 0.5 m, so nobody could pass. Fixed in the geometry engine, with tests and a 600-scene stress sample (100 percent fault detection, 0 unexplained rejections).",
+          "4. **The scoring rule.** Alternative readings that side with the other source of a disputed clock were flattened to 25 by a hard cap. Each such conflict now costs 8 points instead; physical impossibility still caps at 25. All scene results above were regenerated under the current rule; the earlier runs are in `results/old_rubric/`.",
+          "5. **Local Llama context.** With the default context window the local model failed at the layout step. A 16k-context copy of the same weights completed, and that is the model measured here.", ""]
     L += ["## How to reproduce", "", "```bash", "cd backend",
           "python scripts/synthetic_cases_run.py <folder> meta_only                              # a case end to end (creates the case)",
           "python scripts/synthetic_cases_run.py <folder> local_only --reuse <case id>           # local Llama on the same observations",
@@ -333,6 +358,10 @@ def report():
           "python scripts/sandbox_benchmark.py reviewer meta_only && python scripts/sandbox_benchmark.py reviewer local_only",
           "python scripts/sandbox_benchmark.py variance && python scripts/sandbox_benchmark.py report", "```", "",
           "## Limits", "", "- Three small fictional cases, written by the team. Planted contradictions are the kind we thought of.",
+          "- **Reviewer noise.** Both reviewers returned 10 findings (the maximum kept) on the undamaged scenarios too. A reviewer that reports something on everything will \"find\" a planted flaw often, so the detection rates above are optimistic and say little about precision. We report them for the comparison between the two reviewers, not as a measure of accuracy.",
+          "- **Contradiction detection is weak on two cases.** The road and assault cases found none of the planted contradictions (0 of 6). Those need the detector to tie an untimed statement, or a rounded time such as \"about twenty to seven\", to the one recorded entry it disagrees with; the current pairing by similarity does not do that reliably.",
+          "- **The road case has no 3D scene.** The scene builder draws building interiors, so the road collision returns \"insufficient evidence\" for the scene; its timeline, contradiction analysis and report still run. Hence no variance row.",
+          "- **Run-to-run variance is large on the assault case** (25, 67, 25): in two of three runs the model proposed a route the checker rejected (for example a person arriving through a wall) and the repair step did not fix it. We show the best run in the comparison and all runs in the variance table.",
           "- The reviewer and the generator come from the same provider in Meta mode, so shared blind spots are possible.",
           "- Local Llama 3.1 8B is a small model. The comparison shows what an on-premise setup can do today, not a ceiling.",
           "- Scores are a rubric, not a probability. A higher score means better supported by the recorded evidence, not more likely true."]

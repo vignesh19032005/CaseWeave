@@ -335,6 +335,12 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
         <div className="p-8 text-center space-y-3">
           <div className="text-sm text-amber-300">The evidence does not support building a scene.</div>
           <p className="text-xs text-zinc-400 max-w-xl mx-auto">{run?.status_message || run?.assessment?.reason}</p>
+          {/outdoor|road|crossroad|junction|street|highway|vehicle collision/i.test(`${run?.status_message ?? ""} ${run?.assessment?.reason ?? ""}`) && (
+            <p className="text-xs text-sky-300 max-w-xl mx-auto" data-testid="scene-outdoor-note">
+              The 3D builder draws the inside of buildings (rooms, doors, furniture). It does not model roads or moving vehicles. Everything else for this case still works:
+              the timeline, the contradictions between sources, the narrative and the report are in the other tabs.
+            </p>
+          )}
           {generateButtons && <div className="flex justify-center">{generateButtons}</div>}
         </div>
       )}

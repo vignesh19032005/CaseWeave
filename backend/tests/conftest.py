@@ -25,3 +25,9 @@ def pytest_sessionstart(session):
             "Set MYSQL_DATABASE to a throwaway database whose name contains 'test'.",
             returncode=2,
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_live_agent_repair(monkeypatch):
+    """Tests must never call a hosted model: the tool-calling repair agent is switched off unless a test turns it on with a fake model."""
+    monkeypatch.setenv("SANDBOX_AGENT_REPAIR", "0")

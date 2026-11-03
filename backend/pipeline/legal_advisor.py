@@ -30,8 +30,9 @@ from pipeline.llm_guard import safe_chat_json
 logger = logging.getLogger("caseweave.legal_advisor")
 
 NOT_ESTABLISHED = "not established in the evidence"
-VERIFY_NOTICE = ("AI suggestion drafted from this case's recorded facts. Section numbers, sub-clauses, punishments and procedure must be "
-                 "checked against the official text of each Act by the investigating officer or counsel before any FIR or remand is drafted.")
+VERIFY_NOTICE = ("AI-drafted suggestion based on this case's recorded facts. This is not legal advice and not a charging decision. A qualified legal "
+                 "professional must confirm every section number, sub-clause, punishment and procedure against the official text of the Act, and the facts "
+                 "against the source evidence, before anything here is relied on.")
 
 FIR_ADVISORY_PROMPT = """You assist a Police Prosecutor in India. From ONLY the case facts below, suggest which sections of the Bharatiya Nyaya Sanhita (BNS, 2023) and relevant Special Acts (NDPS, POCSO, JJ Act, Arms Act) an FIR may need to consider. This is a suggestion for a human to verify, not a decision.
 
