@@ -2374,18 +2374,31 @@ def _actor_pos_at(actor: dict, t: float) -> Optional[List[float]]:
 
 def layout_similarity(a: dict, b: dict) -> Dict[str, Any]:
     """How alike two layouts built from the same evidence are (rooms, sizes, furniture,
-    doors and their recorded condition). Used to measure run-to-run variation of the model."""
+    doors and their recorded condition). Used to measure run-to-run variation of the model.
+
+    Things are matched by NAME (their label, ignoring case and punctuation), not by id: the model invents the ids, so the same
+    room called "shop" in one run and "shop_floor" in the next is the same room. An id is used only when no label is given."""
     def jac(x: set, y: set) -> float:
         return 1.0 if not x and not y else len(x & y) / len(x | y)
 
-    ra, rb = {r["id"]: r for r in a["rooms"]}, {r["id"]: r for r in b["rooms"]}
+    def key(n: dict) -> str:
+        words = re.findall(r"[a-z0-9]+", str(n.get("label") or n.get("id") or "").lower())
+        return " ".join(words) or str(n.get("id"))
+
+    def index(items: List[dict]) -> Dict[str, dict]:
+        out: Dict[str, dict] = {}
+        for n in items:
+            out.setdefault(key(n), n)
+        return out
+
+    ra, rb = index(a["rooms"]), index(b["rooms"])
     common = set(ra) & set(rb)
     size = [1.0 - min(1.0, abs(ra[i]["width_m"] * ra[i]["length_m"] - rb[i]["width_m"] * rb[i]["length_m"]) / max(ra[i]["width_m"] * ra[i]["length_m"], 1e-6)) for i in common]
-    oa, ob = {o["id"]: o for o in a["openings"]}, {o["id"]: o for o in b["openings"]}
+    oa, ob = index(a["openings"]), index(b["openings"])
     oc = set(oa) & set(ob)
     parts = {
         "rooms": jac(set(ra), set(rb)), "room_sizes": sum(size) / len(size) if size else 0.0,
-        "furniture": jac({f["id"] for f in a["fixtures"]}, {f["id"] for f in b["fixtures"]}),
+        "furniture": jac(set(index(a["fixtures"])), set(index(b["fixtures"]))),
         "doors": jac(set(oa), set(ob)), "door_conditions": sum(1 for i in oc if oa[i]["state"] == ob[i]["state"]) / len(oc) if oc else 0.0,
     }
     score = sum(parts.values()) / len(parts)

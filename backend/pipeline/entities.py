@@ -46,6 +46,20 @@ def _key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def _merge_contained_locations(by_key: dict) -> None:
+    """Merges location mentions whose words are all inside another, longer location mention ("rear shutter" inside
+    "rear shutter gate b"). Deliberately strict: the shorter mention needs two or more words, only locations are merged, and a
+    mention that fits inside two different longer ones is left alone (it is ambiguous). People are never merged here."""
+    locs = {k: set(k.split()) for k, v in by_key.items() if v["type"] == "location"}
+    for short, sw in sorted(locs.items(), key=lambda kv: len(kv[1])):
+        if len(sw) < 2 or short not in by_key:
+            continue
+        parents = [k for k, w in locs.items() if k != short and k in by_key and len(w) > len(sw) and sw <= w]
+        if len(parents) == 1:
+            by_key[parents[0]]["texts"] |= by_key[short]["texts"]
+            del by_key[short]
+
+
 def resolve_entities(case_id: str):
     conn = get_conn()
     cur = conn.cursor()
@@ -72,6 +86,7 @@ def resolve_entities(case_id: str):
         k = _key(text)
         if k:
             by_key.setdefault(k, {"texts": set(), "type": mtype})["texts"].add(text)
+    _merge_contained_locations(by_key)
     reps = sorted(by_key)  # one representative key per group; alphabetical order keeps similar names in the same batch
     rep_text = {k: sorted(v["texts"], key=lambda t: (-len(t), t))[0] for k, v in by_key.items()}
 

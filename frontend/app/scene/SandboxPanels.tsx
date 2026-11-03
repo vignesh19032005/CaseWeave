@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Basis, EditOp, EvidenceEntry, InspectedItem, Layout, PhotoLinks, SandboxReview, Scenario } from "./sandboxTypes";
 
@@ -238,7 +238,7 @@ export function LayoutEditor({ layout, item, pending, onQueue, onClearPending, o
   function queueAdd() {
     const n = (v: string) => Number(v);
     if (!nf.label.trim() || !nf.room) return;
-    const id = `officer_${nf.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}_${pending.length + 1}`;
+    const id = `officer_${nf.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}_${pending.length + 1}_${Date.now().toString(36).slice(-4)}`; // unique across sessions: an applied addition keeps its id
     onQueue({
       op: "add", kind: "fixture", id,
       fields: { label: nf.label.trim(), room: nf.room, category: nf.category || "box", footprint_m: [n(nf.w) || 1, n(nf.d) || 0.6], height_m: n(nf.h) || 0.9, position_frac: [Math.min(0.95, Math.max(0.05, n(nf.fx) || 0.5)), Math.min(0.95, Math.max(0.05, n(nf.fz) || 0.5))] },
@@ -406,16 +406,18 @@ function FrameThumb({ caseId, reviewId, name, label }: { caseId: string; reviewI
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const made = useRef<string | null>(null);
   useEffect(() => {
-    if (!open || url) return;
-    let made: string | null = null;
+    if (!open || made.current) return;
     let cancelled = false;
     api.reviewFrameUrl(caseId, reviewId, name).then((u: string) => {
       if (cancelled) URL.revokeObjectURL(u);
-      else { made = u; setUrl(u); }
+      else { made.current = u; setUrl(u); }
     }).catch(() => { if (!cancelled) setFailed(true); });
-    return () => { cancelled = true; if (made && !url) URL.revokeObjectURL(made); };
-  }, [open, url, caseId, reviewId, name]);
+    return () => { cancelled = true; };
+  }, [open, caseId, reviewId, name]);
+  // the picture's address is released only when this thumbnail goes away, not when it finishes loading
+  useEffect(() => () => { if (made.current) URL.revokeObjectURL(made.current); }, []);
   return (
     <span>
       <button onClick={() => setOpen(!open)} className={`px-1.5 py-0.5 rounded border text-[10px] font-mono ${open ? "bg-indigo-900 border-indigo-600 text-indigo-100" : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"}`}>{label}</button>

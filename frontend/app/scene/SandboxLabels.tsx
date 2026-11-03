@@ -48,7 +48,8 @@ function labelTexture(text: string, color: string, bg: string) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.roundRect(2, 2, w - 4, 48, 10);
+  if (typeof ctx.roundRect === "function") ctx.roundRect(2, 2, w - 4, 48, 10);
+  else ctx.rect(2, 2, w - 4, 48); // older browsers have no rounded rectangles: a square label is better than none
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = color;

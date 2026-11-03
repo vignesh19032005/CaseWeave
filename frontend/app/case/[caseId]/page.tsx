@@ -1323,7 +1323,8 @@ function StudioTab(props: StudioTabProps) {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // Enter that confirms a word in an input method (Tamil, Hindi, ...) must not send the message
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 onAsk();
               }

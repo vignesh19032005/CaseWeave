@@ -14,16 +14,70 @@ What changed from the first version, and why it matters for evidence:
 This is NOT real disaster recovery (that needs offsite/geographically separate storage, encryption at rest, a
 tested restore procedure, and a real retention schedule — see PLAN.md Stage 19/20).
 """
+import base64
 import datetime
 import os
 import shutil
 import stat
+import struct
 import subprocess
+import tarfile
 from pathlib import Path
+
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from secrets_store import get_secret
 
 BACKEND_DIR = Path(__file__).parent
+
+
+MAGIC = b"CWBK1"
+CHUNK = 32 * 1024 * 1024  # 32 MB of plain data per encrypted block, so the archive never has to fit in memory
+KDF_ROUNDS = 390_000
+
+
+def _fernet(passphrase: str, salt: bytes) -> Fernet:
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=KDF_ROUNDS)
+    return Fernet(base64.urlsafe_b64encode(kdf.derive(passphrase.encode("utf-8"))))
+
+
+def encrypt_file(src: Path, dst: Path, passphrase: str) -> None:
+    """Writes src to dst as authenticated, encrypted blocks: MAGIC | salt | (4-byte length | Fernet token)*."""
+    salt = os.urandom(16)
+    f = _fernet(passphrase, salt)
+    with open(src, "rb") as i, open(dst, "wb") as o:
+        o.write(MAGIC + salt)
+        while block := i.read(CHUNK):
+            token = f.encrypt(block)
+            o.write(struct.pack(">I", len(token)) + token)
+
+
+def decrypt_file(src: Path, dst: Path, passphrase: str) -> None:
+    with open(src, "rb") as i, open(dst, "wb") as o:
+        if i.read(len(MAGIC)) != MAGIC:
+            raise ValueError("not a CaseWeave encrypted backup")
+        f = _fernet(passphrase, i.read(16))
+        while head := i.read(4):
+            (n,) = struct.unpack(">I", head)
+            try:
+                o.write(f.decrypt(i.read(n)))
+            except InvalidToken:
+                raise ValueError("wrong passphrase, or the backup is damaged")
+
+
+def _encrypt_staging(staging: Path, passphrase: str) -> None:
+    """Replaces the plain folder contents with one encrypted archive; only the timestamp note stays readable."""
+    archive = staging.parent / (staging.name + ".tar.gz")
+    with tarfile.open(archive, "w:gz") as tar:
+        for child in sorted(staging.iterdir()):
+            tar.add(child, arcname=child.name)
+    encrypt_file(archive, staging / "caseweave_backup.tar.gz.enc", passphrase)
+    archive.unlink()
+    for child in list(staging.iterdir()):
+        if child.name != "caseweave_backup.tar.gz.enc":
+            _rmtree(child) if child.is_dir() else child.unlink()
 
 
 def backup_dir() -> Path:
@@ -107,7 +161,15 @@ def run_backup() -> dict:
         staging.rename(failed)
         return {"backup_dir": str(target), "items_copied": copied, "errors": errors, "timestamp": stamp, "kept_previous_backup": target.exists()}
 
-    (staging / "last_backup.txt").write_text(f"Last backup: {stamp}Z\n", encoding="utf-8")
+    passphrase = os.environ.get("BACKUP_ENCRYPTION_KEY") or get_secret("BACKUP_ENCRYPTION_KEY")
+    if passphrase:
+        try:
+            _encrypt_staging(staging, passphrase)
+            copied.append("(encrypted archive)")
+        except Exception as e:  # noqa: BLE001 - never leave an unencrypted copy behind when encryption was asked for
+            _rmtree(staging)
+            return {"backup_dir": str(target), "items_copied": copied, "errors": [f"encryption failed: {e}"], "timestamp": stamp, "kept_previous_backup": target.exists()}
+    (staging / "last_backup.txt").write_text(f"Last backup: {stamp}Z\nencrypted: {bool(passphrase)}\n", encoding="utf-8")
     old = target.parent / (target.name + ".old")
     if old.exists():
         _rmtree(old)
@@ -120,6 +182,12 @@ def run_backup() -> dict:
 
 
 if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) == 4 and sys.argv[1] == "decrypt":   # python backup.py decrypt <file.enc> <out.tar.gz>   (passphrase in BACKUP_ENCRYPTION_KEY)
+        decrypt_file(Path(sys.argv[2]), Path(sys.argv[3]), os.environ["BACKUP_ENCRYPTION_KEY"])
+        print("decrypted to", sys.argv[3])
+        raise SystemExit(0)
     result = run_backup()
     print(f"Backup folder: {result['backup_dir']}")
     print(f"Items: {result['items_copied']}")

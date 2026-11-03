@@ -89,7 +89,7 @@ CaseWeave/
 - **AI Models & Inference:**
   - Primary: Meta AI API (`muse-wonder-1.0` for text reasoning & multimodal vision).
   - Audio: Groq Whisper (`whisper-large-v3`).
-  - Fallback Chain: Meta → Groq → Google Gemini (`gemini-2.0-flash` / `gemini-3.8-flash`).
+  - Fallback Chain: Meta → local model (optional) → Groq → Google Gemini.
 
 ---
 
@@ -103,11 +103,11 @@ CaseWeave/
 ### 2. Infrastructure Setup
 Start the required databases via Docker:
 ```bash
-# MySQL container (mapped to port 3307)
-docker run -d --name caseweave-mysql -p 3307:3306 -e MYSQL_ROOT_PASSWORD=password -e MYSQL_DATABASE=caseweave mysql:8.0
+# MySQL container (port 3307, this machine only). Choose your own passwords.
+docker run -d --name caseweave-mysql -p 127.0.0.1:3307:3306 -e MYSQL_ROOT_PASSWORD=<root-password> -e MYSQL_DATABASE=caseweave   -e MYSQL_USER=caseweave -e MYSQL_PASSWORD=<app-password> mysql:8.0
 
-# Redis container (mapped to port 6381)
-docker run -d --name caseweave-redis -p 6381:6379 redis:7-alpine
+# Redis container (port 6381, this machine only, password required). Set the same value as REDIS_PASSWORD in the backend secrets.
+docker run -d --name caseweave-redis -p 127.0.0.1:6381:6379 redis:7-alpine redis-server --requirepass <redis-password>
 ```
 
 ### 3. Backend Configuration & Run
@@ -125,7 +125,9 @@ pip install -r requirements.txt
 
 # Configure environment variables
 cp .env.example .env
-# Edit .env with your credentials (META_API_KEY, GROQ_API_KEY, GEMINI_API_KEY, DB settings)
+# Edit .env with your credentials (META_API_KEY, optional GROQ_API_KEY / GOOGLE_API_KEY, MYSQL_* and REDIS_* settings).
+# Set CASEWEAVE_ADMIN_PASSWORD to choose the first admin password; if you leave it blank the admin account starts on a
+# shipped default and is forced to choose a new password at first sign-in.
 
 # Terminal 1: Start FastAPI server
 uvicorn api:app --port 8010 --reload
@@ -146,17 +148,44 @@ npm run dev
 ```
 
 Visit **`http://localhost:3000`** in your browser.  
-Default bootstrap credentials: **`admin`** / **`changeme123`**.
+First sign-in: user **`admin`** with the password you set in `CASEWEAVE_ADMIN_PASSWORD`. If you did not set one, the account starts on a
+shipped default and the app makes you choose a new password (10+ characters) before anything else works. Admins add, reset and
+remove users from **Users** on the home screen.
+
+**Sample accounts for testing (this workstation only).** `admin`, `investigator1` and `reviewer1` all use the sample password
+`CaseWeave-Sample-2026` so that anyone can try each role. This is for a test setup only: before real casework, sign in as each
+one and change it (**Users → reset password**, or `/change-password`), or delete the sample accounts.
+Browser smoke test of a running stack, with no model calls: `CW_PASSWORD=CaseWeave-Sample-2026 CW_CASE=<case id> node frontend/e2e/smoke.cjs`.
 
 ---
 
 ## Running Automated Tests
 
-To run the end-to-end integration test suite against ground truth data:
+The backend tests create and delete rows, so they refuse to run unless `MYSQL_DATABASE` names a database containing "test".
+Point them at a throwaway MySQL and Redis:
 ```bash
 cd backend
-python tests/test_pipeline.py
+MYSQL_DATABASE=caseweave_test MYSQL_PORT=3399 MYSQL_PASSWORD=<pw> REDIS_PORT=6399 python -m pytest tests -q
 ```
+Frontend checks and the browser end-to-end script (needs the API and `npm run dev` or `npm start` running):
+```bash
+cd frontend
+npx tsc --noEmit && npx eslint app && npx next build
+CW_WEB=http://127.0.0.1:3000 CW_PASSWORD=<admin password> CW_CASE=<case id> node e2e/ui-check.cjs mytag
+```
+Set `NEXT_PUBLIC_API_URL` when the API is not on `http://127.0.0.1:8010` (and list the web address in the API's `ALLOWED_ORIGINS`).
+
+---
+
+## Privacy, integrity and AI use
+
+- Case text sent to a language model has phone numbers, e-mails, Aadhaar, PAN, plates, IMEI and long numbers replaced by placeholders,
+  and so are the names of people the analysis has resolved. Place names, free-text addresses and anything inside images are **not** redacted.
+- Meta's hosted model is tried first. Only if it cannot answer does a local model, then Groq, then Gemini answer; the audit log records which.
+  Set `LLM_PROVIDER_MODE=meta_only` or `local_only` to forbid the others. Audio transcription uses Groq and is refused outside `auto` mode.
+- Uploaded originals are hashed, stored read-only and re-verified before they are shown or analysed. The audit trail is hash-chained and keyed.
+- The legal library is a set of **summaries** written for this tool, not the official text of the Acts. Verify before relying on any section.
+- Backups: set `BACKUP_ENCRYPTION_KEY` (any long random string) to encrypt the standing backup archive; without it the backup is plain files.
 
 ---
 

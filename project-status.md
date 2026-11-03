@@ -183,7 +183,7 @@ py -3.11 worker.py
 cd "C:\Users\VIGNESH\Downloads\CaseWeave\frontend"
 npm run dev
 
-# 5. Open http://localhost:3000 → admin / changeme123
+# 5. Open http://localhost:3000 → admin (see README for the password)
 ```
 
 > [!CAUTION]

@@ -7,6 +7,12 @@ processes via os.fork(), which doesn't exist on Windows. SimpleWorker runs
 jobs in-process sequentially instead; fine for a single-instance pilot
 deployment, the real multi-worker scaling story is Linux-deployment territory
 anyway (same as most of Stage 20's "real infra" half).
+
+Job time limit on Windows (measured, rq 2.x SimpleWorker): the limit is enforced in-process, so a job stuck in Python
+code is stopped on time, but a job inside a blocking call (a socket read, time.sleep, a subprocess wait) is only stopped
+after that call returns. The real upper bound on a processing job is therefore the per-call timeout, and every network
+call (60-300 s) and every subprocess call (ffmpeg, OCR worker) in this code base has one. On Linux the default forking
+worker enforces the limit with a signal and does not have this gap.
 """
 import sys
 from pathlib import Path

@@ -12,7 +12,7 @@ def ingest_case(case_id: str, title: str, data_dir: Path):
     import datetime
 
     cur.execute(
-        "INSERT OR REPLACE INTO cases VALUES (?,?,?)",
+        "INSERT OR REPLACE INTO cases (case_id, title, created_at) VALUES (?,?,?)",
         (case_id, title, datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat()),
     )
     conn.commit()
@@ -32,7 +32,7 @@ def ingest_case(case_id: str, title: str, data_dir: Path):
         evidence_id = f"EV-{case_id}-{path.stem}"
         h = file_hash(path)
         cur.execute(
-            "INSERT OR REPLACE INTO evidence_items VALUES (?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO evidence_items (evidence_id, case_id, filename, file_hash, evidence_type, status) VALUES (?,?,?,?,?,?)",
             (evidence_id, case_id, path.name, h, evidence_type, "pending"),
         )
         conn.commit()

@@ -81,6 +81,11 @@ export default function CommandCenter() {
           {username && (
             <div className="flex items-center gap-3 text-xs text-zinc-500">
               <span>{username}</span>
+              {role === "admin" && (
+                <button onClick={() => router.push("/users")} className="hover:text-zinc-300 underline">
+                  users
+                </button>
+              )}
               <button onClick={logout} className="hover:text-zinc-300 underline">
                 sign out
               </button>

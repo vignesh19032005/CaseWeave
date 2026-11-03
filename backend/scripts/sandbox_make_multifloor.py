@@ -89,8 +89,8 @@ class Fake:
         return {"provider": "fake", "model": "fake-1", "parsed": out, "raw": json.dumps(out)}
 
 conn = get_conn()
-conn.execute("INSERT INTO cases VALUES (?,?,?)", (CASE, "Synthetic 3-floor test", "now"))
-conn.execute("INSERT INTO evidence_items VALUES (?,?,?,?,?,?)", ("EV-" + CASE, CASE, "cctv.mp4", "h", "video", "done"))
+conn.execute("INSERT INTO cases (case_id, title, created_at) VALUES (?,?,?)", (CASE, "Synthetic 3-floor test", "now"))
+conn.execute("INSERT INTO evidence_items (evidence_id, case_id, filename, file_hash, evidence_type, status) VALUES (?,?,?,?,?,?)", ("EV-" + CASE, CASE, "cctv.mp4", "h", "video", "done"))
 for oid, text, t in (("OBS-M1", "Shop is a ground floor retail unit with a front door and counter", "23:10"), ("OBS-M2", "Side door forced and wall safe emptied", "23:20"),
                      ("OBS-M3", "Occupant of the flat above found injured in the bedroom", "23:35"), ("OBS-M4", "A white van was parked in front", None)):
     conn.execute("INSERT INTO observations (observation_id, case_id, description, classification, source_evidence_id, extracted_time) VALUES (?,?,?,?,?,?)",

@@ -442,7 +442,7 @@ def _run_migrations(conn):
         if name in applied:
             continue
         fn(conn)
-        conn.execute("INSERT INTO schema_migrations VALUES (?,?)", (name, utcnow().isoformat()))
+        conn.execute("INSERT INTO schema_migrations (name, applied_at) VALUES (?,?)", (name, utcnow().isoformat()))
         conn.commit()
 
 

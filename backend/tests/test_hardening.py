@@ -556,3 +556,54 @@ def test_backup_password_is_not_on_the_command_line(tmp_path, monkeypatch):
     monkeypatch.setattr(backup, "get_secret", lambda k: {"MYSQL_PASSWORD": "pw-xyz"}.get(k, ""))
     ok, err = backup._backup_mysql(tmp_path)
     assert ok and not any("pw-xyz" in part for part in seen["cmd"]) and seen["env"]["MYSQL_PWD"] == "pw-xyz"
+
+
+def test_encrypted_backup_round_trips_and_leaves_nothing_readable(tmp_path, monkeypatch):
+    import backup, tarfile
+    monkeypatch.setenv("CASEWEAVE_BACKUP_DIR", str(tmp_path / "CW_Backup"))
+    monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", "a long test passphrase")
+    monkeypatch.setattr(backup, "BACKEND_DIR", tmp_path / "be")
+    (tmp_path / "be" / "object_store" / "CW-X").mkdir(parents=True)
+    (tmp_path / "be" / "object_store" / "CW-X" / "secret.txt").write_text("witness statement SECRET-MARKER", encoding="utf-8")
+
+    def fake_dump(dest):
+        (dest / "caseweave.sql").write_text("-- SQL-SECRET-MARKER", encoding="utf-8")
+        return True, ""
+    monkeypatch.setattr(backup, "_backup_mysql", fake_dump)
+    result = backup.run_backup()
+    assert not result["errors"], result
+    out = tmp_path / "CW_Backup"
+    assert sorted(p.name for p in out.iterdir()) == ["caseweave_backup.tar.gz.enc", "last_backup.txt"]
+    blob = (out / "caseweave_backup.tar.gz.enc").read_bytes()
+    assert b"SECRET-MARKER" not in blob and blob.startswith(backup.MAGIC)
+    with pytest.raises(ValueError, match="wrong passphrase"):
+        backup.decrypt_file(out / "caseweave_backup.tar.gz.enc", tmp_path / "bad.tar.gz", "not the passphrase")
+    backup.decrypt_file(out / "caseweave_backup.tar.gz.enc", tmp_path / "ok.tar.gz", "a long test passphrase")
+    with tarfile.open(tmp_path / "ok.tar.gz") as t:
+        names = t.getnames()
+        assert "caseweave.sql" in names and any(n.endswith("secret.txt") for n in names)
+
+
+def test_location_mentions_are_merged_only_when_clearly_contained():
+    from pipeline.entities import _merge_contained_locations
+    by_key = {
+        "rear shutter": {"texts": {"rear shutter"}, "type": "location"},
+        "rear shutter gate b": {"texts": {"rear_shutter_gate_b"}, "type": "location"},
+        "shutter": {"texts": {"shutter"}, "type": "location"},                  # one word: never merged
+        "side door": {"texts": {"side door"}, "type": "location"},
+        "side door east": {"texts": {"side door east"}, "type": "location"},
+        "side door west": {"texts": {"side door west"}, "type": "location"},    # "side door" fits two places: ambiguous, left alone
+        "kumaran": {"texts": {"Kumaran"}, "type": "person_or_device"},
+    }
+    _merge_contained_locations(by_key)
+    assert "rear shutter" not in by_key and by_key["rear shutter gate b"]["texts"] == {"rear shutter", "rear_shutter_gate_b"}
+    assert {"shutter", "side door", "side door east", "side door west", "kumaran"} <= set(by_key)
+
+
+def test_layout_similarity_matches_by_name_not_by_model_chosen_id():
+    from pipeline import sandbox_geometry as geo
+    def lay(room_id, door_id):
+        return {"rooms": [{"id": room_id, "label": "Shop Floor", "width_m": 8, "length_m": 6}],
+                "openings": [{"id": door_id, "label": "Rear shutter", "state": "forced"}], "fixtures": [{"id": room_id + "_c", "label": "Counter"}]}
+    s = geo.layout_similarity(lay("shop", "rear"), lay("shop_floor", "rear_shutter_gate"))
+    assert s["score"] >= 0.95, s     # the same room and door under different ids are the same

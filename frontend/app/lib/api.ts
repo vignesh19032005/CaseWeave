@@ -121,6 +121,20 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   me: () => request("/auth/me"),
+  listUsers: () => request("/auth/users"),
+  createUser: (username: string, password: string, role: string) =>
+    request("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, role }),
+    }),
+  resetUserPassword: (userId: string, newPassword: string) =>
+    request(`/auth/users/${userId}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: newPassword }),
+    }),
+  deleteUser: (userId: string) => request(`/auth/users/${userId}`, { method: "DELETE" }),
   changePassword: (oldPassword: string, newPassword: string) =>
     request("/auth/change-password", {
       method: "POST",

@@ -48,6 +48,7 @@ SECRET_KEYS = [
     "REDIS_HOST",
     "REDIS_PORT",
     "REDIS_PASSWORD",
+    "BACKUP_ENCRYPTION_KEY",
 ]
 
 
@@ -70,8 +71,10 @@ def get_secret(key: str) -> str:
     """Returns the stored value, checking os.environ, then Windows
     Credential Manager, then a local .env file (in that order). Empty
     string if not set anywhere."""
-    if os.environ.get(key):
-        return os.environ[key]
+    if key in os.environ:
+        # "__unset__" means "deliberately empty": Windows cannot hold an empty environment variable, and a test run
+        # against a throwaway Redis has to be able to say "no password" even though the real one is in the keyring.
+        return "" if os.environ[key] == "__unset__" else os.environ[key]
     try:
         value = keyring.get_password(SERVICE_NAME, key)
         if value:

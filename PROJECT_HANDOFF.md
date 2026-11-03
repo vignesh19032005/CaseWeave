@@ -103,7 +103,7 @@ CaseWeave/
 
 ### Login credentials
 
-- Default admin: `admin` / `changeme123` (bootstrapped on first run if no users table exists — **this gets wiped by** `reset_db()` **calls**, e.g. from `run_pipeline.py`, so if login fails after a CLI run, the admin account was just recreated with these same default credentials)
+- Default admin: created on first run (see README: `CASEWEAVE_ADMIN_PASSWORD`, or forced change at first sign-in). `reset_db()` now refuses to run except on a test database. **calls**, e.g. from `run_pipeline.py`, so if login fails after a CLI run, the admin account was just recreated with these same default credentials)
 - JWT token expires after 8 hours — frontend auto-redirects to `/login` on a 401 now (fixed this session, see bug list)
 
 ### Known real cases in the database (as of last check)
@@ -293,7 +293,7 @@ py -3.11 worker.py
 cd "C:\Users\VIGNESH\Downloads\CaseWeave\frontend"
 npm run dev
 
-# 5. Open http://localhost:3000, log in as admin / changeme123
+# 5. Open http://localhost:3000, log in as admin (see README for the password)
 ```
 
 **To verify everything is actually working, not just "running":**

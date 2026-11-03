@@ -47,7 +47,7 @@ PERMISSIONS = {
     "view_case": ("investigator", "reviewer", "admin"),
     "create_case": ("investigator", "admin"),
     "confirm_conflict": ("reviewer", "admin"),
-    "export_report": ("admin",),
+    "export_report": ("investigator", "reviewer", "admin"),  # whoever may view a case may export it; user management and deletion stay admin-only
     "manage_users": ("admin",),
     "delete_case": ("admin",),
 }

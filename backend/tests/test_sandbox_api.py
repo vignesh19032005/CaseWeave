@@ -140,8 +140,9 @@ def test_01_read_never_generates(client):
 def test_02_permissions(client):
     ROLE["v"] = "reviewer"
     assert client.post(f"/cases/{CASE}/sandbox/generate", json={}).status_code == 403
-    assert client.get(f"/cases/{CASE}/sandbox/export").status_code == 403
-    assert client.get(f"/cases/{CASE}/sandbox/export.pdf").status_code == 403
+    # exporting is allowed for anyone who may view the case (there is no scene yet, so the answer is "nothing to export", not "forbidden")
+    assert client.get(f"/cases/{CASE}/sandbox/export").status_code != 403
+    assert client.get(f"/cases/{CASE}/sandbox/export.pdf").status_code != 403
     assert client.post(f"/cases/{CASE}/sandbox/layout", json={"ops": []}).status_code == 403
     assert client.get(f"/cases/{CASE}/sandbox").status_code == 200
     ROLE["v"] = "admin"

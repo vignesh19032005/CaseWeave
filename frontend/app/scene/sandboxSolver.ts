@@ -185,8 +185,8 @@ function solveActor(actor: PlanActor, t: number): ActorState & { touched: string
   if (seg.kind === "transit" && seg.route && seg.route.length >= 2) {
     const tau = Math.max(0, tc - seg.t0);
     const eff = seg.eff_length_m ?? seg.length_m ?? 0;
-    const v = seg.v_max ?? 1.4;
-    const a = seg.accel ?? 1.2;
+    const v = Math.max(0.05, seg.v_max ?? 1.4); // never zero: the formulas below divide by speed and acceleration
+    const a = Math.max(0.05, seg.accel ?? 1.2);
     const d = distanceAtTime(eff, v, a, tau);
     const p = pointAtEff(seg, d);
     pos = p.pos;
