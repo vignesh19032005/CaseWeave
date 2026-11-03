@@ -38,6 +38,7 @@ from pipeline import sandbox_evidence as evd
 from pipeline import sandbox_geometry as geo
 from pipeline import sandbox_fidelity as fidelity
 from pipeline import sandbox_diversity as diversity
+from pipeline import sandbox_agent
 from pipeline.redaction import build_redactor, redaction_enabled
 
 logger = logging.getLogger("caseweave.sandbox")
@@ -577,6 +578,71 @@ MAX_REPAIRS = 2
 STRONG_SCORE = 70      # below this the best scenario is improved once more; if it still falls short the screen says so plainly
 
 
+AGENT_SYSTEM_SUFFIX = """
+
+You also have a tool, check_scenario. It runs the deterministic checker on a complete scenario you give it and lists what is still wrong. Work like this:
+1. Draft the corrected scenario and call check_scenario with it.
+2. Read the remaining problems. If any are left, fix exactly those and call it again (at most 4 checks in all).
+3. When the checker reports no problems to fix, or you are out of checks, reply with ONLY the final scenario JSON and no other text.
+The checker, not you, decides whether something is possible. Do not argue with it and do not remove people or change the story just to silence it."""
+
+
+def _agent_repair(raw: Dict[str, Any], problems: List[Dict[str, Any]], codes: set, layout: Dict[str, Any], ev: Dict[str, Any], ctx: Dict[str, Any],
+                  redactor, meta: Dict[str, Any], case_id: str, locations: str, context: str, entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Repair as a tool-calling conversation with Meta's model: it proposes, check_scenario (our deterministic checker) reports, it fixes again.
+    Returns the checked version with the fewest repairable problems, or None if the agent could not run (the single-shot repair then takes over)."""
+    from llm_client import _parse_json_text
+    seen: List[Dict[str, Any]] = []
+
+    def run_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        if name != "check_scenario":
+            return {"error": "unknown tool"}
+        sc = args.get("scenario")
+        if isinstance(sc, str):
+            try:
+                sc = json.loads(sc)
+            except ValueError:
+                sc = None
+        if not isinstance(sc, dict):
+            return {"error": "scenario must be a JSON object with actors and steps"}
+        built = _build_scenario(redactor.restore_json(sc), layout, ev, ctx)
+        if built is None:
+            return {"error": "the scenario could not be laid out (check that every step names a person and a place)"}
+        seen.append(built)
+        left = [v for v in built["validation"]["violations"] if v["code"] in codes]
+        return {"physically_possible": built["validation"]["is_physically_possible"], "problems_to_fix": len(left),
+                "remaining_problems": [redactor.redact(v["message"])[:300] for v in left[:8]], "evidence_support_score": built["score"]["verifiable_score"]}
+
+    prompt = (f"Case ID: {case_id}\n\n{context}\n\n{locations}\n\nThe scenario to repair:\n{json.dumps(raw, default=str)[:12000]}\n\n"
+              "Problems the checker found (fix these):\n" + "\n".join(f"- {v['message']}" for v in problems[:8]))
+    try:
+        res = sandbox_agent.meta_tool_loop(REPAIR_SYSTEM_PROMPT + AGENT_SYSTEM_SUFFIX,
+                                           redactor.redact(prompt), [sandbox_agent.CHECK_TOOL], run_tool)
+    except Exception as e:  # noqa: BLE001 - the single-shot repair is the fallback
+        logger.info("agent repair unavailable: %s", str(e)[:160])
+        entry["method"] = "single_shot (tool-calling unavailable)"
+        return None
+    final = None
+    try:
+        parsed = _parse_json_text("meta", res["text"]) if res["text"] else None
+        if isinstance(parsed, dict):
+            final = _build_scenario(redactor.restore_json(parsed), layout, ev, ctx)
+    except Exception:  # noqa: BLE001
+        final = None
+    if final is not None:
+        seen.append(final)
+    meta["calls"].append({"step": "repair", "provider": "meta", "model": res["model"], "method": "tool_calling", "tool_calls": len(res["tool_calls"]),
+                          "prompt_hash": evd.text_hash(REPAIR_SYSTEM_PROMPT + prompt), "seconds": res["seconds"], "attempts": 1,
+                          "redacted": redactor.summary()["enabled"], "raw_response": ""})
+    entry["method"] = "tool_calling"
+    entry["tool_calls"] = [{"checked_problems_left": (c.get("result") or {}).get("problems_to_fix"), "score": (c.get("result") or {}).get("evidence_support_score"), "error": (c.get("result") or {}).get("error")}
+                           for c in res["tool_calls"]]
+    if not seen:
+        return None
+    best = min(seen, key=lambda b: len([v for v in b["validation"]["violations"] if v["code"] in codes]))
+    return best
+
+
 def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], ev: Dict[str, Any], ctx: Dict[str, Any], redactor, meta: Dict[str, Any],
                       run_id: str, case_id: str, locations: str, context: str) -> List[Dict[str, Any]]:
     """One repair attempt for scenarios whose problems are of a kind a rewrite can fix."""
@@ -598,18 +664,22 @@ def _repair_scenarios(scenarios: List[Dict[str, Any]], layout: Dict[str, Any], e
                    "evidence that really belongs to each step, so each person's steps follow that order." if any(v["code"].startswith("anchor_") for v in problems) else "") +
                   "\n\nReturn the corrected scenario.")
         entry = {"scenario": s["title"][:80], "problems": [v["message"][:160] for v in problems[:8]], "fixed": False}
-        try:
-            call = _call_model(REPAIR_SYSTEM_PROMPT, prompt, 8192, "repair", redactor)
-            meta["calls"].append(call["meta"])
-            rebuilt = _build_scenario(call["parsed"], layout, ev, ctx) if isinstance(call["parsed"], dict) else None
-        except ModelFailure:
-            rebuilt = None
+        rebuilt = None
+        if sandbox_agent.enabled():
+            rebuilt = _agent_repair(raw, problems, codes, layout, ev, ctx, redactor, meta, case_id, locations, context, entry)
+        if rebuilt is None:
+            try:
+                call = _call_model(REPAIR_SYSTEM_PROMPT, prompt, 8192, "repair", redactor)
+                meta["calls"].append(call["meta"])
+                rebuilt = _build_scenario(call["parsed"], layout, ev, ctx) if isinstance(call["parsed"], dict) else None
+            except ModelFailure:
+                rebuilt = None
         if rebuilt is not None:
             left = [v for v in rebuilt["validation"]["violations"] if v["code"] in codes]
             if len(left) < len(problems):
                 rebuilt["branch"] = s.get("branch")
                 new = _finish_scenario(rebuilt, run_id=run_id, case_id=case_id, scenario_type="automated", provenance=s["provenance"])
-                new["repair"] = {"problems_found": entry["problems"], "problems_left": len(left)}
+                new["repair"] = {"problems_found": entry["problems"], "problems_left": len(left), "method": entry.get("method", "single_shot"), "checks": len(entry.get("tool_calls") or [])}
                 entry["fixed"] = True
                 entry["problems_left"] = len(left)
                 s = new

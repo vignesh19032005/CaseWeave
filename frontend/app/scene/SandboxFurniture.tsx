@@ -2,7 +2,7 @@
 
 import React, { useMemo } from "react";
 import * as THREE from "three";
-import { Edges } from "@react-three/drei";
+import { Edges, RoundedBox } from "@react-three/drei";
 import { FinishMaterial, FinishProvider } from "./SandboxMaterials";
 import type { Finish } from "./SandboxMaterials";
 import { ModelOrFallback, modelFor } from "./SandboxModels";
@@ -11,13 +11,15 @@ import { ModelOrFallback, modelFor } from "./SandboxModels";
 // so it is the right size for any case. The shape is chosen from the category the model gave,
 // or from words in the label; nothing here refers to a specific case.
 
-export type FurnitureKind = "counter" | "shelf" | "cabinet" | "table" | "chair" | "bed" | "appliance" | "vehicle" | "tree" | "fence" | "box";
+export type FurnitureKind = "counter" | "shelf" | "cabinet" | "safe" | "desk" | "table" | "chair" | "bed" | "appliance" | "vehicle" | "tree" | "fence" | "box";
 
 const WORDS: [RegExp, FurnitureKind][] = [
   [/counter|bench|reception|desk top|checkout|bar\b/i, "counter"],
   [/shelv|shelf|rack|stack|bookcase|storage unit/i, "shelf"],
-  [/cabinet|locker|safe|vault|cupboard|wardrobe|almirah|drawer|fridge|refrigerator|freezer/i, "cabinet"],
-  [/table|desk|workbench/i, "table"],
+  [/\bsafe\b|vault|strongbox/i, "safe"],
+  [/cabinet|locker|cupboard|wardrobe|almirah|drawer|fridge|refrigerator|freezer/i, "cabinet"],
+  [/\bdesk\b|workstation/i, "desk"],
+  [/table|workbench/i, "table"],
   [/chair|stool|seat|sofa|couch|bench seat/i, "chair"],
   [/\bbed\b|mattress|cot\b/i, "bed"],
   [/machine|appliance|oven|stove|washer|printer|computer|terminal|till|register|atm/i, "appliance"],
@@ -29,7 +31,7 @@ const WORDS: [RegExp, FurnitureKind][] = [
 export function inferKind(category: string, label: string, kind?: string): FurnitureKind {
   const c = (category || "").toLowerCase();
   if (kind === "vehicle" || kind === "tree" || kind === "fence") return kind;
-  const direct: Record<string, FurnitureKind> = { counter: "counter", shelf: "shelf", cabinet: "cabinet", safe: "cabinet", locker: "cabinet", table: "table", desk: "table", chair: "chair", bed: "bed", appliance: "appliance" };
+  const direct: Record<string, FurnitureKind> = { counter: "counter", shelf: "shelf", cabinet: "cabinet", safe: "safe", locker: "cabinet", table: "table", desk: "desk", chair: "chair", bed: "bed", appliance: "appliance" };
   if (direct[c]) return direct[c];
   for (const [rx, k] of WORDS) if (rx.test(label)) return k;
   return "box";
@@ -50,7 +52,7 @@ function Slab({ size, pos, color, rough = 0.7 }: { size: [number, number, number
   );
 }
 
-const FINISH_OF: Record<FurnitureKind, Finish> = { counter: "wood", shelf: "wood", cabinet: "steel", table: "wood", chair: "wood", bed: "plain", appliance: "steel", vehicle: "paint", tree: "plain", fence: "wood", box: "plain" };
+const FINISH_OF: Record<FurnitureKind, Finish> = { counter: "wood", shelf: "wood", cabinet: "steel", safe: "steel", desk: "wood", table: "wood", chair: "wood", bed: "plain", appliance: "steel", vehicle: "paint", tree: "plain", fence: "wood", box: "plain" };
 
 type ModelProps = { kind: FurnitureKind; w: number; d: number; h: number; color: string; hot: boolean; assumed: boolean; label?: string };
 
@@ -78,11 +80,10 @@ function FurnitureModelInner({ kind, w, d, h, color, hot, assumed }: ModelProps)
   const light = useMemo(() => shade(c, 1.25), [c]);
   const edge = assumed ? "#f43f5e" : "#0f172a";
   const body = (
-    <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
-      <boxGeometry args={[w, h, d]} />
+    <RoundedBox args={[w, h, d]} radius={Math.min(0.04, Math.min(w, d, h) * 0.18)} smoothness={3} position={[0, h / 2, 0]} castShadow receiveShadow>
       <FinishMaterial color={c} rough={0.65} />
       <Edges color={edge} />
-    </mesh>
+    </RoundedBox>
   );
   switch (kind) {
     case "counter":
@@ -115,6 +116,28 @@ function FurnitureModelInner({ kind, w, d, h, color, hot, assumed }: ModelProps)
           <Slab size={[0.012, h * 0.88, 0.012]} pos={[0, h * 0.5, d / 2 + 0.006]} color={dark} />
           <Slab size={[0.03, 0.18, 0.03]} pos={[-0.08, h * 0.5, d / 2 + 0.02]} color="#cbd5e1" rough={0.3} />
           <Slab size={[0.03, 0.18, 0.03]} pos={[0.08, h * 0.5, d / 2 + 0.02]} color="#cbd5e1" rough={0.3} />
+        </group>
+      );
+    case "safe":
+      return (
+        <group>
+          {body}
+          <Slab size={[w * 0.78, h * 0.78, 0.02]} pos={[0, h * 0.5, d / 2 + 0.01]} color={dark} rough={0.35} />
+          <mesh position={[w * 0.12, h * 0.52, d / 2 + 0.03]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[Math.min(w, h) * 0.12, Math.min(w, h) * 0.12, 0.03, 20]} /><meshStandardMaterial color="#e2e8f0" metalness={0.8} roughness={0.25} /></mesh>
+          <Slab size={[0.04, h * 0.22, 0.03]} pos={[-w * 0.22, h * 0.5, d / 2 + 0.035]} color="#cbd5e1" rough={0.3} />
+        </group>
+      );
+    case "desk":
+      return (
+        <group>
+          <Slab size={[w, 0.05, d]} pos={[0, h - 0.025, 0]} color={light} rough={0.45} />
+          <Slab size={[w * 0.28, h - 0.05, d * 0.9]} pos={[-w / 2 + w * 0.14 + 0.02, (h - 0.05) / 2, 0]} color={c} />
+          {[0.22, 0.5, 0.78].map((f, i) => (
+            <Slab key={i} size={[w * 0.2, 0.025, 0.02]} pos={[-w / 2 + w * 0.14 + 0.02, (h - 0.05) * f, d * 0.45 + 0.012]} color="#cbd5e1" rough={0.3} />
+          ))}
+          <Slab size={[0.05, h - 0.05, 0.05]} pos={[w / 2 - 0.05, (h - 0.05) / 2, -d / 2 + 0.05]} color={dark} />
+          <Slab size={[0.05, h - 0.05, 0.05]} pos={[w / 2 - 0.05, (h - 0.05) / 2, d / 2 - 0.05]} color={dark} />
+          <mesh position={[0, h / 2, 0]}><boxGeometry args={[w, h, d]} /><meshBasicMaterial visible={false} /><Edges color={edge} /></mesh>
         </group>
       );
     case "table":

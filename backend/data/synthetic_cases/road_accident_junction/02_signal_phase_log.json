@@ -1,0 +1,56 @@
+[
+ {
+  "timestamp": "2026-04-02T18:41:50",
+  "controller": "JCT-HM-04",
+  "arm": "Harbour_EW",
+  "phase": "green"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:08",
+  "controller": "JCT-HM-04",
+  "arm": "Harbour_EW",
+  "phase": "amber"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:11",
+  "controller": "JCT-HM-04",
+  "arm": "Harbour_EW",
+  "phase": "red"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:11",
+  "controller": "JCT-HM-04",
+  "arm": "Mill_NS",
+  "phase": "red_amber"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:13",
+  "controller": "JCT-HM-04",
+  "arm": "Mill_NS",
+  "phase": "green"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:45",
+  "controller": "JCT-HM-04",
+  "arm": "Mill_NS",
+  "phase": "amber"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:48",
+  "controller": "JCT-HM-04",
+  "arm": "Mill_NS",
+  "phase": "red"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:50",
+  "controller": "JCT-HM-04",
+  "arm": "Harbour_EW",
+  "phase": "red_amber"
+ },
+ {
+  "timestamp": "2026-04-02T18:42:52",
+  "controller": "JCT-HM-04",
+  "arm": "Harbour_EW",
+  "phase": "green"
+ }
+]

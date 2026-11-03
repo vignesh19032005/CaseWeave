@@ -1,0 +1,23 @@
+NORTHGATE DISTRICT POLICE (FICTIONAL) — ROAD COLLISION SCENE MEASUREMENTS
+Case reference: SYN-RTC-01 (synthetic demonstration case)
+Recorded by: Traffic Constable P. Vandermeer, Collision Investigation Unit
+Scene attended: 2 April 2026, 19:05 to 21:10
+Location: Harbour Road / Mill Street signalled crossroads (fictional)
+
+1. THE JUNCTION
+A four-arm crossroads. Harbour Road runs east-west, about 7.5 m wide with one lane each way. Mill Street runs north-south, about 7 m wide with one lane each way. The junction box is about 9 m by 9 m. Traffic signals control all four arms with a pedestrian crossing on the south arm. The road surface was dry. Street lighting was on. It was dusk to dark.
+
+2. VEHICLES
+- Vehicle 1: dark-coloured hatchback (registration fictional HB26 TKR), travelling westbound on Harbour Road. Found stopped just past the centre of the junction, front damaged, in the westbound lane, about 3 m beyond the stop line.
+- Vehicle 2: delivery motorcycle (registration fictional MC26 LMD), travelling northbound on Mill Street. Found on its side about 8 m north of the junction centre, on the northbound lane. The rider was on the ground beside it.
+
+3. MARKS AND MEASUREMENTS
+- Skid marks: a single braking mark 11.5 m long from the northbound stop line, ending at the motorcycle's rest position. No braking marks from vehicle 1.
+- Impact point: debris field centred 2.0 m past the stop line in the northbound lane, 1.2 m from the kerb.
+- Vehicle 1 rest position: 3 m beyond its stop line.
+- Vehicle 2 rest position: 8 m north of the junction centre.
+
+4. SIGNALS
+The signal controller's log was requested from the highway authority (see signal phase log).
+5. WEATHER AND VISIBILITY
+Dry, 14 degrees, no fog. A parked van on the west kerb of Harbour Road about 12 m before the junction reduced the westbound driver's view of the cross street.

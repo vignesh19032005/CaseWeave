@@ -1,0 +1,5 @@
+NORTHGATE EMERGENCY AMBULANCE SERVICE (FICTIONAL) — CALL LOG EXTRACT
+Case reference: SYN-RTC-01 (synthetic demonstration case)
+18:43:05 Call received from caller reporting collision, Harbour Road / Mill Street junction. Motorcycle rider down, conscious, leg injury. Car involved, driver uninjured.
+18:44:20 Ambulance dispatched.
+18:52:40 Ambulance on scene.

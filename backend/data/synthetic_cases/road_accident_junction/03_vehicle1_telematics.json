@@ -1,0 +1,14 @@
+{
+  "vehicle": "Vehicle 1 (fictional hatchback)",
+  "source": "insurer telematics unit",
+  "clock": "UTC+1 synchronised",
+  "samples": [
+    {"t": "2026-04-02T18:42:00", "speed_kmh": 46},
+    {"t": "2026-04-02T18:42:10", "speed_kmh": 48},
+    {"t": "2026-04-02T18:42:20", "speed_kmh": 50},
+    {"t": "2026-04-02T18:42:27", "speed_kmh": 51},
+    {"t": "2026-04-02T18:42:31", "speed_kmh": 49, "event": "impact_detected"},
+    {"t": "2026-04-02T18:42:34", "speed_kmh": 0}
+  ],
+  "limits": "Speed from wheel sensors, position not recorded."
+}

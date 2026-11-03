@@ -539,7 +539,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                   <Section title={scenario.scenario_type === "officer_custom" ? "Officer theory" : `Candidate #${scenario.rank}`}>
                     <p className="text-xs text-zinc-200 leading-relaxed">{scenario.hypothesis_summary}</p>
                     {scenario.strengthened && <p className="text-[11px] text-emerald-300">Improved once with evidence it had left unused: the support score rose from {scenario.strengthened.from_score} to {scenario.strengthened.to_score}.</p>}
-                    {scenario.repair && <p className="text-[11px] text-sky-300">Repaired once for logical problems the checker found ({scenario.repair.problems_left} left).</p>}
+                    {scenario.repair && <p className="text-[11px] text-sky-300">{scenario.repair.method === "tool_calling" ? `Repaired by a Meta model that called the checker as a tool ${scenario.repair.checks ?? 0} time(s); the checker, not the model, chose the version kept` : "Repaired once for logical problems the checker found"} ({scenario.repair.problems_left} left).</p>}
                     {scenario.differs_by && <p className="text-[11px] text-indigo-300">What is different about this one: {scenario.differs_by}</p>}
                     {scenario.support_level === "less_supported" && <p className="text-[11px] text-amber-300">This is a less supported possibility: it takes an alternative the evidence leans away from. It is shown so you can test it, not because it is the likeliest.</p>}
                     {scenario.support_level === "alternative" && <p className="text-[11px] text-sky-300">An alternative reading of a question the evidence leaves open.</p>}

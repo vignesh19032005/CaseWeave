@@ -1,0 +1,11 @@
+NORTHGATE DISTRICT POLICE (FICTIONAL) — CCTV EXTRACTION LOG
+Case reference: SYN-ASLT-01 (synthetic demonstration case)
+Camera: CAM-CORR-01, ceiling dome at the west end of the corridor, looking east along the corridor towards the storeroom door.
+Clock checked against the building's time server: no offset.
+
+[21:12:45] A person (later matched to card C-017) walks east along the corridor and enters the storeroom.
+[21:13:10] A second person (later matched to card C-041) walks east along the corridor and enters the storeroom. The door closes.
+[21:13:20 to 21:30:50] The corridor is empty. The storeroom door stays closed. A faint thud is heard on the camera microphone at 21:19:40, and raised voices at 21:20:10.
+[21:31:00] The storeroom door opens. Person C-017 leaves, closes the door behind, and walks west towards the studio.
+[21:34:30] The storeroom door does not open again.
+[21:39:10] A third person (C-029) walks east along the corridor, stops near the storeroom, then calls out and kneels near the storeroom door. The injured man is visible leaning against the corridor wall.

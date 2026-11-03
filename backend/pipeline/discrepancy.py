@@ -27,7 +27,7 @@ Three real roles, not a relabeled single call:
 
 Which pairs get debated (the part that decides what the tool can find):
 every timed claim is placed in the topic groups it belongs to (entry/alarm, movement, loot, vehicle, person
-description). Claims from DIFFERENT sources that share a group and fall within 90 minutes of each other are
+description, and the non-burglary groups: signals, speed, collision or injury, emergency calls, access control). Claims from DIFFERENT sources that share a group and fall within 90 minutes of each other are
 scored by how similar their wording is (sentence embeddings, with a word-overlap fallback) and how close in
 time they are, and the best MAX_PAIRS pairs are debated. An earlier version debated only the earliest door
 event of each source, so a forced-entry alarm was compared with an unrelated line of the CCTV log and the real
@@ -59,6 +59,9 @@ MAX_PAIRS = 8
 WINDOW_MIN = 90
 MIN_SCORE = 0.30
 MAX_USES_PER_EVENT = 2
+UNTIMED_LABEL = "no time stated"
+MAX_UNTIMED_PAIRS = 6        # extra pairs: a statement that gives no time, against a recorded event of another source on the same topic
+MIN_UNTIMED_SCORE = 0.42
 
 def _words(*stems: str) -> "re.Pattern":
     """Whole words only: each stem may carry an ordinary ending (s, es, ed, d, ing), nothing else. This is what stops
@@ -73,6 +76,13 @@ TOPIC_GROUPS = {
     "loot": _words("cash", "rs", "inr", "rupee", "stolen", "stole", "theft", "missing", "duffel", "bag", "drawer", "cabinet", "vault", "narcotic", "drug"),
     "vehicle": _words("car", "bike", "motorcycle", "scooter", "van", "truck", "vehicle", "auto", "lorry"),
     "person": _words("wear", "wearing", "jacket", "hood", "shirt", "glove", "male", "female", "height", "tall", "build", "mask", "shoe", "beard"),
+    # Topics that are not about a break-in, so the same detector finds disagreements in a collision or an assault as well.
+    "signal": _words("light", "signal", "green", "red", "amber", "phase", "stop line"),
+    "speed": _words("speed", "kmh", "mph", "brak", "brake", "accelerat", "slow", "fast", "faster"),
+    "collision": _words("collision", "collid", "impact", "struck", "strike", "hit", "crash", "fall", "fell", "slid", "injur", "bleed", "blow", "push",
+                        "shov", "thud", "thump", "assault", "punch", "attack", "wound", "laceration"),
+    "emergency": _words("call", "ambulance", "dispatch", "emergency", "police", "responder", "paramedic", "hospital"),
+    "access": _words("card", "reader", "granted", "keypad", "badge", "access", "unlock", "arm", "disarm"),
 }
 _NEGATED_CLOSED = re.compile(r"\bclosed\b", re.I)
 
@@ -227,6 +237,46 @@ def _candidate_pairs(timeline_events: list, max_pairs: int = MAX_PAIRS):
     return pairs
 
 
+def _untimed_pairs(case_id: str, timeline_events: list, max_pairs: int = MAX_UNTIMED_PAIRS):
+    """Statements often say what happened without saying when ("the lights were green for me"). They never reach the timeline, so they could
+    not be compared with a recorded event ("signal log: red"). Here each such reported claim is paired with the best-matching recorded event of
+    another source that shares its topic; the same debate then decides. Few pairs, strict score, and the claim is shown as having no time."""
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("SELECT observation_id, source_evidence_id, description FROM observations WHERE case_id=? AND extracted_time IS NULL AND classification='reported'",
+                                (case_id,)).fetchall()
+    except Exception:  # noqa: BLE001 - an extra pass must never stop the main one
+        return []
+    claims = [{"event_id": r["observation_id"], "time": UNTIMED_LABEL, "description": r["description"], "source_observation_id": r["observation_id"],
+               "source_evidence_id": r["source_evidence_id"], "classification": "reported"} for r in rows if len(r["description"] or "") >= 25]
+    recorded = [e for e in timeline_events if e.get("classification") == "observed" and e.get("description")]
+    if not claims or not recorded:
+        return []
+    texts = [c["description"] for c in claims] + [e["description"] for e in recorded]
+    sims = _similarities(texts)
+    scored = []
+    for i, c in enumerate(claims):
+        gc = event_groups(c["description"])
+        for j, e in enumerate(recorded):
+            shared = (gc & event_groups(e["description"])) - {"person", "vehicle"}     # a shared description of a person or a vehicle is identity, not a claim about what happened
+            if not shared or c["source_evidence_id"] == e["source_evidence_id"]:
+                continue
+            sim = float(sims[i][len(claims) + j]) if sims is not None else _word_overlap(c["description"], e["description"]) * 1.5
+            score = sim + 0.10 * len(shared)
+            if score >= MIN_UNTIMED_SCORE:
+                scored.append((score, c, e))
+    scored.sort(key=lambda x: -x[0])
+    used, pairs = {}, []
+    for _, c, e in scored:
+        if used.get(c["event_id"], 0) >= 2:     # at most two recorded events per statement, so a near-duplicate cannot crowd out the one that matters
+            continue
+        used[c["event_id"]] = used.get(c["event_id"], 0) + 1
+        pairs.append((c, e))
+        if len(pairs) >= max_pairs:
+            break
+    return pairs
+
+
 def _shared_entity_context(entity_by_obs: dict, a: dict, b: dict) -> str:
     """Whether both claims' source observations already resolved to the same canonical entity (Stage 11).
     Returns a context string for the debate agents, or empty string if Stage 11 hasn't run / nothing shared."""
@@ -365,7 +415,7 @@ def detect_discrepancies(case_id: str, timeline_events: list, live: bool = False
     entity_by_obs = _entity_map(case_id)
     carried = 0
 
-    for a, b in _candidate_pairs(timeline_events):
+    for a, b in _candidate_pairs(timeline_events) + _untimed_pairs(case_id, timeline_events):
         entity_context = _shared_entity_context(entity_by_obs, a, b)
 
         try:

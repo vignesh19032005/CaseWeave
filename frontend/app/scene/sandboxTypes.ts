@@ -278,7 +278,7 @@ export interface Scenario {
   disputed_citations: string[];
   citations_removed: number;
   strengthened?: { from_score: number; to_score: number };
-  repair?: { problems_found: string[]; problems_left: number };
+  repair?: { problems_found: string[]; problems_left: number; method?: string; checks?: number };
   visibility?: VisibilityRange[];
   differs_by?: string;
   less_supported?: boolean;

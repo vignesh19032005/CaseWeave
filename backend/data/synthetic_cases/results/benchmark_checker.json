@@ -1,0 +1,23 @@
+{
+ "burglary_warehouse": {
+  "scenarios": 3,
+  "revalidation_identical": [
+   3,
+   3
+  ],
+  "faults": {
+   "wall": [
+    12,
+    12
+   ],
+   "sprint": [
+    6,
+    6
+   ],
+   "jump": [
+    8,
+    8
+   ]
+  }
+ }
+}

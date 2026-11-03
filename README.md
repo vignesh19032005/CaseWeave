@@ -1,204 +1,104 @@
-# CaseWeave AI
+# CaseWeave
 
-> **From fragmented evidence to connected intelligence.**
-> An AI-powered investigation & evidence-analysis reasoning layer for modern investigative teams.
+**Evidence in. A 3D reconstruction out, where a model proposes and code decides what is possible.**
 
----
+CaseWeave turns the scattered material of an incident (statements, logs, CCTV notes, photographs, examiner's reports) into a walkable 3D scene and several *different* possible accounts of what happened. Each account is checked by deterministic code against real walls, doors, walking speeds and the evidence clocks, and every claim cites the evidence it rests on. It is a tool for **investigators to test accounts against the evidence**. It does not decide who is guilty and it does not give legal advice.
 
-## What is CaseWeave?
+Built for the Meta AI Developer Hackathon. Everything shown in the demo and in the benchmarks uses **fictional cases**.
 
-CaseWeave is an AI reasoning and contradiction-analysis workspace designed for investigative workflows (tailored for the India/Tamil Nadu police context). 
+| | |
+|---|---|
+| Demo video (3 min) | _add the link before submitting_ |
+| Architecture | [docs/architecture.svg](docs/architecture.svg) |
+| Measured results | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
+| How we know it is right (and where it is not) | [docs/HOW_WE_KNOW_IT_IS_RIGHT.md](docs/HOW_WE_KNOW_IT_IS_RIGHT.md) |
+| Third-party models and licences | [frontend/public/models/LICENSES.md](frontend/public/models/LICENSES.md) |
 
-It connects fragmented case materials—**CCTV & phone videos, photos, witness statements, forensic reports, and access logs**—into a unified, evidence-linked workspace.
+![Architecture: the model proposes, the code decides](docs/architecture.png)
 
-> **Honest core principle:**  
-> *"CaseWeave finds contradictions and gaps faster and more consistently than manual review, and cites its sources so you can verify everything — it does not replace investigation, verification, or judgment."*
+## The problem
 
----
+Investigators reconcile statements, device logs and photographs by hand, and the contradictions between them are easy to miss. Some context from India's own statistics (NCRB, *Crime in India 2022*, Table 1A.5): police had **56,59,787 IPC cases under investigation** in 2022 and disposed of 36,60,786 of them, which leaves about **20 lakh (roughly 35%) still open at year end** (our arithmetic from NCRB's figures). The Bureau of Police Research & Development reports about **5.3 lakh vacancies in a sanctioned force of 26.2 lakh** (about 20%, Data on Police Organisations as on 1 Jan 2020, PIB). We found **no published figure for how many hours scene reconstruction takes per case**, so we do not claim one. The claim is narrower: reading every source against every other source is slow and error-prone, and a tool that does it consistently, with citations, is useful.
 
-## Key Features
+## Where Meta's models and tools are used
 
-1. **Multimodal Media Extraction (Stage 1):**
-   - PDFs (text layer + scanned page OCR fallback).
-   - Images & crime scene photos (deep visual inspection via Meta Vision + OCR for signage/stamps).
-   - Audio recordings transcribed via Whisper.
-   - Videos processed with audio extraction and sampled key-frame visual reasoning.
+| Use | Meta component | Why it matters |
+|---|---|---|
+| Reading every evidence item, building the observation table, proposing the scene layout and several scenarios | **Muse Wonder** through the Meta Model API (`/v1/responses`) | The model reads and proposes. It never emits coordinates. |
+| Reading the case photographs into a short, checked list of what is visible | **Muse Wonder vision**, same API | Qualitative only, marked *inferred*, never used for sizes. |
+| Finding the scene's objects in the case photographs (boxes drawn on the photo) | **SAM 3.1** (hosted) | Boxes are filtered, marked inferred, hashed, audited. |
+| A second, independent review of every scenario, with plan-view pictures at every key moment | **Muse Wonder vision**, multi-image | Findings must cite a real step, picture or evidence id or they are dropped. |
+| Repairing a scenario as an **agent**: the model calls our validator as a tool, reads what is still wrong, fixes, re-checks | **Meta Model API function calling** | The model proposes, our checker decides, and we keep whichever version the checker prefers. |
+| Running the whole pipeline with nothing leaving the building | **Llama 3.1 (8B)** on a local server (Ollama) | `LLM_PROVIDER_MODE=local_only`. A side-by-side with Meta-only is in the benchmarks. |
 
-2. **Source-Grounded Observations & Timelines (Stages 2 & 3):**
-   - Extracts structured factual claims classified into `observed`, `reported`, `inferred`, `disputed`, or `unknown`.
-   - Chronological timeline construction linking directly to source citations and locators.
+Provider order is Meta first, then a local Llama server if configured, then fallbacks. `LLM_PROVIDER_MODE` can be `auto`, `meta_only` or `local_only`, and the screen shows which was used for every scene.
 
-3. **3-Agent Adversarial Debate for Discrepancy Detection (Stage 4):**
-   - Moves past unreliable single-prompt LLM evaluation.
-   - **Prosecutor Agent** builds the argument for conflict and non-coincidence.
-   - **Defender Agent** argues compatibility, temporal ambiguity, or separate events.
-   - **Judge Agent** adjudicates using a strict shared decision rubric.
-   - Reviewer workflow requires non-empty rationale with complete audit tracking.
+## What it does
 
-4. **Entity Resolution & Interactive Graph (Stage 11):**
-   - Resolves aliases and mentions into canonical people, devices, locations, and organizations.
-   - Rendered using an interactive dependency-free SVG entity-relationship graph.
+- **3D scene and playback** from the evidence, with every size marked *stated*, *inferred* or *assumed* (assumed objects stay plain with a red outline).
+- **Several genuinely different scenarios**, each scored by a documented rubric (not a probability) and each citing evidence per step.
+- **Independent checker**: routes around walls and furniture, locked and forced doors, walking speeds, hand-overs, line of sight. Physical impossibilities are rejected by code, not by opinion.
+- **Who could see whom**: every camera and witness has a view cone that stays calm until someone is in view.
+- **Contradictions between sources** (for example a statement against a door log), each pointing at both sources.
+- **Second-model review**, **photo readings and photo boxes**, **officer's own theory** tested against the evidence, **audit trail**, **export pack and PDF**.
 
-5. **Legal Retrieval RAG (Stage 5):**
-   - Contextual RAG matching case facts against legal statutes (e.g., Bharatiya Sakshya Adhiniyam / BSA s.63 electronic evidence provisions, IEA s.65B).
+## Try it (no setup of your own data needed)
 
-6. **Interactive 3D Scene Shell (Stage 6):**
-   - Procedural 3D scene approximation built with React Three Fiber (R3F) and runtime Babel compilation from investigator room dimensions and object states.
+Three fictional cases are in [backend/data/synthetic_cases](backend/data/synthetic_cases): a night burglary, a two-vehicle collision at a signalled junction, and an assault in an office storeroom. Each has different kinds of evidence and a few contradictions planted on purpose, listed in its `ground_truth.json`. Load one with:
 
-7. **Synthesized Incident Reconstruction (Stage 9a):**
-   - Holistically synthesizes supported facts vs. unresolved gaps, providing confidence-rated best guesses with investigative rationale.
-
-8. **Exportable Reports & Legal Artifacts (Stage 10):**
-   - Comprehensive Markdown reports and styled, publication-ready PDF exports.
-   - Draft BSA s.63 Electronic Evidence Certificate generator.
-
-9. **Security, Audit, & Integrity:**
-   - Cryptographic SHA-256 evidence hashing upon ingest.
-   - Tamper-evident hash-chained audit log with database-level concurrency locking.
-   - Role-Based Access Control (RBAC): `investigator`, `reviewer`, and `admin`.
-
----
-
-## Architecture Overview
-
-```
-CaseWeave/
-├── backend/                  # FastAPI REST API & Pipeline Services
-│   ├── api.py               # REST API endpoints & CORS
-│   ├── auth.py              # JWT authentication & RBAC
-│   ├── db.py                # Database models & connection management
-│   ├── storage.py           # Content-addressed local object store
-│   ├── job_queue.py          # RQ async job queue integration
-│   ├── worker.py            # Background worker process
-│   ├── upload_validation.py # Magic-byte verification & path sanitization
-│   └── pipeline/            # 10+ core reasoning and extraction stages
-├── frontend/                 # Next.js 16 + React 19 + Tailwind CSS
-│   ├── app/                 # App Router UI
-│   │   ├── case/[caseId]/   # Incident Reconstruction Studio & Entity Graph
-│   │   └── scene/           # Dynamic Three.js 3D scene viewer
-│   └── lib/                 # API client & auth session handling
-```
-
----
-
-## Tech Stack
-
-- **Frontend:** Next.js 16 (App Router), React 19, Tailwind CSS v4, Three.js, React Three Fiber (`@react-three/fiber`), `@babel/standalone`.
-- **Backend:** Python 3.11, FastAPI, Uvicorn, PyMySQL, RQ (Redis Queue), ReportLab (PDF), PyMuPDF.
-- **Data & Storage:** MySQL (structured relations & audit trail), Redis (job queues), Local Object Store (content-addressed SHA-256).
-- **AI Models & Inference:**
-  - Primary: Meta AI API (`muse-wonder-1.0` for text reasoning & multimodal vision).
-  - Audio: Groq Whisper (`whisper-large-v3`).
-  - Fallback Chain: Meta → local model (optional) → Groq → Google Gemini.
-
----
-
-## Getting Started
-
-### 1. Prerequisites
-- **Python 3.11+**
-- **Node.js 20+** & npm
-- **Docker** (for MySQL and Redis)
-
-### 2. Infrastructure Setup
-Start the required databases via Docker:
-```bash
-# MySQL container (port 3307, this machine only). Choose your own passwords.
-docker run -d --name caseweave-mysql -p 127.0.0.1:3307:3306 -e MYSQL_ROOT_PASSWORD=<root-password> -e MYSQL_DATABASE=caseweave   -e MYSQL_USER=caseweave -e MYSQL_PASSWORD=<app-password> mysql:8.0
-
-# Redis container (port 6381, this machine only, password required). Set the same value as REDIS_PASSWORD in the backend secrets.
-docker run -d --name caseweave-redis -p 127.0.0.1:6381:6379 redis:7-alpine redis-server --requirepass <redis-password>
-```
-
-### 3. Backend Configuration & Run
 ```bash
 cd backend
-
-# Create virtual environment and install dependencies
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On Linux/macOS:
-# source venv/bin/activate
-
-pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env with your credentials (META_API_KEY, optional GROQ_API_KEY / GOOGLE_API_KEY, MYSQL_* and REDIS_* settings).
-# Set CASEWEAVE_ADMIN_PASSWORD to choose the first admin password; if you leave it blank the admin account starts on a
-# shipped default and is forced to choose a new password at first sign-in.
-
-# Terminal 1: Start FastAPI server
-uvicorn api:app --port 8010 --reload
-
-# Terminal 2: Start background pipeline worker
-python worker.py
+python scripts/synthetic_cases_run.py burglary_warehouse meta_only
 ```
 
-### 4. Frontend Setup & Run
+## Run it
+
+Requires Python 3.11, Node 20, Docker, and a Meta Model API key.
+
 ```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start Next.js development server
-npm run dev
+cp backend/.env.example backend/.env       # set META_API_KEY, MYSQL_* and optionally REDIS_PASSWORD
+export MYSQL_ROOT_PASSWORD=... MYSQL_PASSWORD=...
+pip install -r backend/requirements.txt
+./run_all.sh                                # Windows: run_all.bat
 ```
 
-Visit **`http://localhost:3000`** in your browser.  
-First sign-in: user **`admin`** with the password you set in `CASEWEAVE_ADMIN_PASSWORD`. If you did not set one, the account starts on a
-shipped default and the app makes you choose a new password (10+ characters) before anything else works. Admins add, reset and
-remove users from **Users** on the home screen.
+This starts MySQL and Redis in Docker (bound to this machine only), the API on `127.0.0.1:8010`, the worker, and the web app on `http://localhost:3000`. The first admin password is `CASEWEAVE_ADMIN_PASSWORD` if you set it; otherwise the account starts on a shipped default and is forced to choose a new password at first sign-in.
 
-**Sample accounts for testing (this workstation only).** `admin`, `investigator1` and `reviewer1` all use the sample password
-`CaseWeave-Sample-2026` so that anyone can try each role. This is for a test setup only: before real casework, sign in as each
-one and change it (**Users → reset password**, or `/change-password`), or delete the sample accounts.
-Browser smoke test of a running stack, with no model calls: `CW_PASSWORD=CaseWeave-Sample-2026 CW_CASE=<case id> node frontend/e2e/smoke.cjs`.
+Nothing is hardcoded to one case. Secrets live in `backend/.env` (never committed).
 
----
+## Tests and measurements
 
-## Running Automated Tests
-
-The backend tests create and delete rows, so they refuse to run unless `MYSQL_DATABASE` names a database containing "test".
-Point them at a throwaway MySQL and Redis:
 ```bash
-cd backend
-MYSQL_DATABASE=caseweave_test MYSQL_PORT=3399 MYSQL_PASSWORD=<pw> REDIS_PORT=6399 python -m pytest tests -q
+cd backend && MYSQL_DATABASE=caseweave_test python -m pytest tests -q     # needs a throwaway test database
+python scripts/sandbox_eval.py 2500                                      # 2,500 random scenes: determinism, planted-fault detection, false alarms
+python scripts/sandbox_benchmark.py report                               # writes docs/BENCHMARKS.md from the measured runs
 ```
-Frontend checks and the browser end-to-end script (needs the API and `npm run dev` or `npm start` running):
-```bash
-cd frontend
-npx tsc --noEmit && npx eslint app && npx next build
-CW_WEB=http://127.0.0.1:3000 CW_PASSWORD=<admin password> CW_CASE=<case id> node e2e/ui-check.cjs mytag
+
+The test suite refuses to run against a database whose name does not contain `test`.
+
+## Limits, said plainly
+
+- Scenarios are **possibilities consistent with the evidence**, not findings of fact. A scenario can be consistent and still wrong.
+- The second-model reviewer is an opinion from the same model family. "Nothing found" is not proof.
+- Photo readings and photo boxes are inferred and are never used for measurements.
+- The scene is as good as the sizes in the evidence. Where the evidence is silent, the scene says *assumed* and draws it plainly.
+- Only fictional cases have been run. It has not been validated on real cases with investigators.
+- The bundled legal summaries are paraphrases for reference, not the Acts' text. They are not legal advice and need checking by a lawyer. They are not part of the demo.
+- Do not use it for identification of people, behaviour scoring, or any purpose other than testing accounts of an incident against recorded evidence.
+
+## Repository layout
+
 ```
-Set `NEXT_PUBLIC_API_URL` when the API is not on `http://127.0.0.1:8010` (and list the web address in the API's `ALLOWED_ORIGINS`).
+backend/            FastAPI API, pipeline stages, geometry engine, validator, reviewer, tests
+  pipeline/sandbox*.py   layout, scenarios, checker, repair agent, review, photo links
+  data/synthetic_cases/  fictional demonstration cases + ground truth + measured results
+  scripts/               evaluation, benchmark, case runner
+frontend/           Next.js 16 / React Three Fiber web app (3D player in app/scene)
+docs/               architecture, benchmarks, how we know it is right
+```
 
----
+Earlier notes on the full pipeline stages are in [docs/PIPELINE_STAGES.md](docs/PIPELINE_STAGES.md).
 
-## Privacy, integrity and AI use
+## Licence
 
-- Case text sent to a language model has phone numbers, e-mails, Aadhaar, PAN, plates, IMEI and long numbers replaced by placeholders,
-  and so are the names of people the analysis has resolved. Place names, free-text addresses and anything inside images are **not** redacted.
-- Meta's hosted model is tried first. Only if it cannot answer does a local model, then Groq, then Gemini answer; the audit log records which.
-  Set `LLM_PROVIDER_MODE=meta_only` or `local_only` to forbid the others. Audio transcription uses Groq and is refused outside `auto` mode.
-- Uploaded originals are hashed, stored read-only and re-verified before they are shown or analysed. The audit trail is hash-chained and keyed.
-- The legal library is a set of **summaries** written for this tool, not the official text of the Acts. Verify before relying on any section.
-- Backups: set `BACKUP_ENCRYPTION_KEY` (any long random string) to encrypt the standing backup archive; without it the backup is plain files.
-
----
-
-## Scope & Legal Boundaries
-
-CaseWeave is an analytical aid for investigators. Deliberately out of scope:
-- **No FIR/e-FIR registration** (statutory legal act with liability).
-- **No physical lab integrations** (DNA, ballistics, physical forensics).
-- **No statutory custody tracking or court-stage case management**.
-- **No definitive guilt or innocence determinations**. All AI findings cite underlying sources and flag unverified gaps.
-
----
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT. Third-party 3D models are CC BY 4.0 from the Khronos glTF Sample Assets (credits in `frontend/public/models/LICENSES.md`).

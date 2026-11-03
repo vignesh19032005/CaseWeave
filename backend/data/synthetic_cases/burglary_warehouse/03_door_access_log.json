@@ -1,0 +1,7 @@
+[
+  {"timestamp": "2026-03-11T18:02:11", "reader": "READER-CUSTOMER-DOOR", "card": "K02", "event": "door_locked_from_outside", "result": "ok"},
+  {"timestamp": "2026-03-11T23:48:30", "reader": "READER-CUSTOMER-DOOR", "card": "K02", "event": "door_unlocked", "result": "ok"},
+  {"timestamp": "2026-03-12T00:03:55", "reader": "READER-CUSTOMER-DOOR", "card": "K02", "event": "door_locked_from_outside", "result": "ok"},
+  {"timestamp": "2026-03-12T02:19:40", "reader": "READER-CUSTOMER-DOOR", "card": "K01", "event": "door_unlocked", "result": "ok"},
+  {"timestamp": "2026-03-12T02:20:50", "reader": "READER-LOADING-DOOR", "card": "none", "event": "no_activity_all_night", "result": "ok"}
+]
