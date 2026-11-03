@@ -271,10 +271,19 @@ steps [{{"actor","node_id","action","narrative","dt_sec_estimate","phase","item"
 No prose outside the JSON."""
 
 VISION_SYSTEM_PROMPT = (
-    "You describe the physical layout visible in one photograph of a scene, for an investigator. List only what is visible: rooms or "
-    "areas, doors and openings and their condition, furniture and objects and roughly where they are, any scale cues (door height, "
-    "tiles, signs) and anything that gives a size in metres. Do not guess identities of people. Under 120 words."
+    "You read ONE photograph from a police case file, for an investigator who is reconstructing the scene. Report only what is visible, in plain "
+    "qualitative terms. Do not give measurements in metres unless a printed dimension or a standard object gives a scale you can name. Do not "
+    "identify people. Do not infer what happened. If you cannot tell something, say so.\n"
+    'Respond with ONLY JSON: {"scene": "one short sentence: what kind of place or part of a place this is", '
+    '"items": [{"what": "short noun phrase", "kind": "door|shutter|window|furniture|container|tool|debris|damage|sign|other", '
+    '"state": "closed|open|forced|damaged|intact|overturned|unknown", "note": "under 12 words, what is visible about it"}], '
+    '"scale_cues": ["objects of known size that appear, if any"], "cannot_tell": ["what the photo does not show that matters"]}. '
+    "At most 8 items."
 )
+
+MAX_VISION_PHOTOS = 4
+_VISION_KINDS = {"door", "shutter", "window", "furniture", "container", "tool", "debris", "damage", "sign", "other"}
+_VISION_STATES = {"closed", "open", "forced", "damaged", "intact", "overturned", "unknown"}
 
 
 def _locations_context(layout: Dict[str, Any]) -> str:
@@ -332,23 +341,54 @@ def _call_model(system: str, prompt: str, max_tokens: int, label: str, redactor)
     }
 
 
+def _read_photo(case_id: str, e: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """One photograph through Meta's vision model, reduced to a short, checked list of what is visible. Anything unusable gives None."""
+    from storage import get_object_path
+    from llm_client import _parse_json_text
+    try:
+        provider, text = chat_vision(VISION_SYSTEM_PROMPT, "Read this photograph.", get_object_path(case_id, e["evidence_id"], e["filename"]), 900)
+        parsed = _parse_json_text(provider, text)
+    except Exception:  # noqa: BLE001 - optional enrichment must never block generation
+        logger.info("photo reading skipped for %s", e.get("evidence_id"))
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    items = []
+    for it in (parsed.get("items") if isinstance(parsed.get("items"), list) else [])[:8]:
+        if not isinstance(it, dict):
+            continue
+        what = geo.clean_text(it.get("what"), 60)
+        if not what:
+            continue
+        kind, state = str(it.get("kind") or "other").lower(), str(it.get("state") or "unknown").lower()
+        items.append({"what": what, "kind": kind if kind in _VISION_KINDS else "other", "state": state if state in _VISION_STATES else "unknown", "note": geo.clean_text(it.get("note"), 100)})
+    lst = lambda v: [geo.clean_text(x, 100) for x in (v if isinstance(v, list) else [])[:5] if geo.clean_text(x, 100)]  # noqa: E731
+    return {"evidence_id": e["evidence_id"], "filename": e["filename"], "provider": provider, "scene": geo.clean_text(parsed.get("scene"), 160), "items": items,
+            "scale_cues": lst(parsed.get("scale_cues")), "cannot_tell": lst(parsed.get("cannot_tell"))}
+
+
 def _visual_notes(case_id: str, ev: Dict[str, Any], meta: Dict[str, Any]) -> str:
-    """Optional: a layout-focused look at photo evidence. Off by default because it re-sends
-    images to the provider (SANDBOX_VISION_CUES=1 to enable)."""
+    """Optional: what the case photographs show, read by Meta's vision model. Off by default because it sends the images to the provider
+    (SANDBOX_VISION_CUES=1 to enable). The readings are qualitative hints. They reach the layout model as inferred, citable by photo id, and are
+    kept with the run so a person can see exactly what was read from which photo."""
     import os
+    from concurrent.futures import ThreadPoolExecutor
     if os.environ.get("SANDBOX_VISION_CUES", "0").strip() not in ("1", "true", "yes"):
         return ""
-    from storage import get_object_path
-    notes = []
-    images = [e for e in ev["evidence_items"] if e.get("evidence_type") == "image"][:3]
-    for e in images:
-        try:
-            _, text = chat_vision(VISION_SYSTEM_PROMPT, "Describe the layout visible in this photo.", get_object_path(case_id, e["evidence_id"], e["filename"]), 400)
-            notes.append(f"- [{e['evidence_id']}] {geo.clean_text(text, 600)}")
-        except Exception:  # noqa: BLE001 - optional enrichment must never block generation
-            logger.info("vision layout cue skipped for %s", e.get("evidence_id"))
-    meta["vision_cues"] = {"enabled": True, "images_sent": len(images), "notes": len(notes)}
-    return "<visual_layout_notes>\n" + "\n".join(notes) + "\n</visual_layout_notes>" if notes else ""
+    images = [e for e in ev["evidence_items"] if e.get("evidence_type") == "image"][:MAX_VISION_PHOTOS]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        read = [r for r in pool.map(lambda e: _read_photo(case_id, e), images) if r]
+    meta["vision_cues"] = {"enabled": True, "images_sent": len(images), "photos_read": len(read), "photos": read,
+                           "note": "Qualitative readings by a vision model. They are hints, marked inferred, and never measurements."}
+    if not read:
+        return ""
+    lines = []
+    for r in read:
+        bits = [f"{i['what']} ({i['state']}{': ' + i['note'] if i['note'] else ''})" for i in r["items"]]
+        lines.append(f"- [{r['evidence_id']}] {r['filename']}: {r['scene']}. Visible: " + "; ".join(bits) + (f". Cannot tell: {'; '.join(r['cannot_tell'])}" if r["cannot_tell"] else ""))
+    return ("<visual_layout_notes>\nReadings of the case photographs by a vision model. Treat them as inferred hints, not facts. When one of them leads you to include or "
+            "change a door, shutter, object or its state, cite the photo id (EV-...) in that element's evidence_refs and set its basis to \"inferred\". Never take a "
+            "size from them.\n" + "\n".join(lines) + "\n</visual_layout_notes>")
 
 
 # --------------------------------------------------------------------------
@@ -522,6 +562,7 @@ def _build_scenario(raw: Any, layout: Dict[str, Any], ev: Dict[str, Any], ctx: D
         "evidence_index": evd.build_evidence_index(ev, cited_all),
         "fidelity": fid["report"], "coverage": fid["coverage"],
         "differs_by": geo.clean_text(raw.get("differs_by"), 200), "less_supported": bool(raw.get("less_supported")), "time_alignment": alignment, "sync": plan.get("sync"),
+        "visibility": geo.visibility_ranges(plan, layout),
         "steps_input": steps_in, "actors_input": actors_raw, "engine_version": geo.ENGINE_VERSION,
     }
 

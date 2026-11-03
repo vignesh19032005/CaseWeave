@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { api, ApiError } from "../lib/api";
-import { buildAxis, clockAt, daylightAt, formatDuration, fromDisplay, quietGaps, solve, toDisplay, totalDuration } from "./sandboxSolver";
+import { buildAxis, clockAt, daylightAt, formatDuration, fromDisplay, quietGaps, seenAt, solve, toDisplay, totalDuration } from "./sandboxSolver";
 import type { CameraMode } from "./SandboxScene3D";
 import type { LabelMode } from "./SandboxLabels";
 import { BasisBadge, ComparisonMatrix, LayoutEditor, PhotoEvidence, RefChips, ReviewPanel, Section, SceneBoundary } from "./SandboxPanels";
@@ -123,11 +123,14 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
   const scenario = scenarios.find((s) => s.scenario_id === activeId) ?? scenarios[0];
   const total = totalDuration(scenario);
   const [skipQuiet, setSkipQuiet] = useState(true);
+  const [cinematic, setCinematic] = useState(false);
+  const [pointView, setPointView] = useState(false);
   const axis = useMemo(() => buildAxis(total, skipQuiet ? quietGaps(scenario) : []), [scenario, total, skipQuiet]);
   const shown = (secs: number) => toDisplay(axis, secs) / Math.max(axis.display, 1e-9);
   const sim = useMemo(() => solve(scenario, t, focusActor), [scenario, t, focusActor]);
   const clock = clockAt(scenario, sim.t);
   const daylight = daylightAt(clock?.text);
+  const seen = useMemo(() => seenAt(scenario?.visibility, sim.t), [scenario, sim.t]);
   const index = useMemo(() => ({ ...(run?.evidence_index ?? {}), ...(scenario?.evidence_index ?? {}) }), [run, scenario]);
   const overlay = useMemo(() => (overlayAll ? scenarios.filter((s) => s.scenario_id !== scenario?.scenario_id) : []), [overlayAll, scenarios, scenario]);
   const canGenerate = role === "investigator" || role === "admin";
@@ -443,6 +446,8 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                       <button key={m} onClick={() => setDragMode(m)} className={`px-1.5 py-0.5 rounded ${dragMode === m ? "bg-indigo-600 text-white" : "text-zinc-400"}`}>{m === "rotate" ? "Rotate" : "Move"}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-1 text-[11px] text-zinc-400" title="Soft contact shadows, a gentle glow and a film-style tone. It only changes how the scene is drawn. Slower on weak graphics cards."><input type="checkbox" checked={cinematic} onChange={(e) => setCinematic(e.target.checked)} /> Cinematic</label>
+                  <label className="flex items-center gap-1 text-[11px] text-zinc-400" title="Redraws the scene as dots for a scan-like look. It is a stylised view of the same model, not scan data and not a measurement."><input type="checkbox" checked={pointView} onChange={(e) => setPointView(e.target.checked)} /> Point view (stylised)</label>
                   <label className="flex items-center gap-1 text-[11px] text-zinc-400" title="Skips long stretches where nobody is doing anything, keeping the first and last moments of each"><input type="checkbox" checked={skipQuiet} onChange={(e) => setSkipQuiet(e.target.checked)} /> Skip quiet periods</label>
                   <label className="flex items-center gap-1 text-[11px] text-zinc-400"><input type="checkbox" checked={cutaway} onChange={(e) => setCutaway(e.target.checked)} /> Cutaway walls</label>
                   <label className="flex items-center gap-1 text-[11px] text-zinc-400" title="Minimal: people, the active place and what you select. All: every object, door and camera. Labels move out of the way of people and fade while you drag.">
@@ -494,13 +499,13 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                   <SceneBoundary resetKey={`${run?.run_id}-${scenario.scenario_id}`}>
                     <SandboxScene3D
                       layout={layout} scenario={scenario} overlay={overlay} sim={sim} cutaway={cutaway} labelMode={labelMode}
-                      camera={camera} focus={focus} selectedId={inspected?.id ?? null} maxLevel={level} daylight={daylight} dragMode={dragMode}
+                      camera={camera} focus={focus} selectedId={inspected?.id ?? null} maxLevel={level} daylight={daylight} seen={seen} cinematic={cinematic} pointView={pointView} dragMode={dragMode}
                       onInspect={(i) => { setInspected(i); if (i.focus) setFocus(i.focus); }}
                     />
                   </SceneBoundary>
                   {observer && (
                     <div className="absolute inset-x-0 top-0 p-2 flex justify-between pointer-events-none font-mono text-[11px] text-white" style={{ textShadow: "0 0 3px #000" }}>
-                      <span><span className="text-red-500">●</span> REC · {observer.label}</span>
+                      <span><span className="text-red-500">●</span> REC · {observer.label}{seen[observer.id]?.length ? <span className="ml-3 px-1.5 rounded bg-red-600 text-white animate-pulse">MOTION DETECTED · {seen[observer.id].join(", ")}</span> : null}</span>
                       <span>{clock ? `${clock.text}${clock.estimated ? " (est.)" : ""}` : "no clock"}</span>
                     </div>
                   )}
@@ -508,6 +513,7 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                     <span className="px-2 py-0.5 rounded bg-zinc-950/85 border border-zinc-800 text-emerald-400">green: direct route</span>
                     <span className="px-2 py-0.5 rounded bg-zinc-950/85 border border-zinc-800 text-amber-400">amber: adjusted by system</span>
                     <span className="px-2 py-0.5 rounded bg-zinc-950/85 border border-zinc-800 text-rose-300">red outline: assumed object</span>
+                    {pointView && <span className="px-2 py-0.5 rounded bg-amber-950/90 border border-amber-800 text-amber-300">Point view: stylised dots drawn from the model, not scan data</span>}
                   </div>
                 </div>
 
@@ -711,6 +717,19 @@ export default function ForensicSandboxPlayer({ caseId }: { caseId: string }) {
                     {layout.notes && <p className="text-[11px] text-zinc-400">Model note: {layout.notes}</p>}
                     {layout.limits.length > 0 && (
                       <details className="text-[10px] text-zinc-500"><summary className="cursor-pointer">What this scene does not model</summary>{layout.limits.map((l, i) => <div key={i}>• {l}</div>)}</details>
+                    )}
+                    {run?.generation?.vision_cues?.photos && run.generation.vision_cues.photos.length > 0 && (
+                      <details className="text-[11px] text-zinc-400">
+                        <summary className="cursor-pointer text-sky-300">Photo readings (inferred) · {run.generation.vision_cues.photos_read ?? run.generation.vision_cues.photos.length} of {run.generation.vision_cues.images_sent} photos</summary>
+                        <p className="text-[10px] text-zinc-500">{run.generation.vision_cues.note}</p>
+                        {run.generation.vision_cues.photos.map((ph) => (
+                          <div key={ph.evidence_id} className="mt-1">
+                            <div className="text-zinc-300">{ph.evidence_id} · {ph.filename}: {ph.scene}</div>
+                            {ph.items.map((it, i) => <div key={i} className="pl-2">• {it.what} ({it.state}){it.note ? ` — ${it.note}` : ""}</div>)}
+                            {ph.cannot_tell.length > 0 && <div className="pl-2 text-zinc-500">Cannot tell: {ph.cannot_tell.join("; ")}</div>}
+                          </div>
+                        ))}
+                      </details>
                     )}
                     {run?.generation?.evidence && run.generation.evidence.observations_omitted > 0 && (
                       <p className="text-[11px] text-amber-300">{run.generation.evidence.observations_omitted} of {run.generation.evidence.observations_total} observations did not fit and were not shown to the model.</p>

@@ -237,6 +237,41 @@ def audit_case_legal_compliance(case_id: str) -> Dict[str, Any]:
 
 # ----------------------------------------------------------------------- FIR advisory ----
 
+_CORPUS_CACHE: Dict[str, Any] = {}
+
+
+def _corpus_index() -> Dict[tuple, Dict[str, Any]]:
+    """The bundled legal summaries by (act's first two words, section number), loaded once."""
+    if not _CORPUS_CACHE:
+        for path in sorted(CORPUS_DIR.glob("*.json")):
+            try:
+                d = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            key = (" ".join(str(d.get("act") or "").lower().split()[:2]), str(d.get("section") or "").lower())
+            _CORPUS_CACHE[key] = d
+    return _CORPUS_CACHE
+
+
+def _fill_from_corpus(sec: Dict[str, Any]) -> Dict[str, Any]:
+    """The model often leaves cognizable, bailable, punishment and triable-by empty. Where the section is in the bundled corpus (matched on act and
+    base section number, so "305(a)" finds 305), the empty fields are filled from it and the source is named. A value the model did give is kept.
+    Nothing is invented: a section not in the corpus keeps its empty fields, and the screen says "not stated"."""
+    act = " ".join(str(sec.get("act") or "").lower().split()[:2])
+    m = re.match(r"\s*(\d+[a-z]?)", str(sec.get("section") or "").lower())
+    doc = _corpus_index().get((act, m.group(1))) if m else None
+    if not doc:
+        return sec
+    out, filled = dict(sec), False
+    for k in ("cognizable", "bailable", "punishment", "triable_by"):
+        if out.get(k) in (None, "") and doc.get(k) not in (None, ""):
+            out[k] = doc[k]
+            filled = True
+    if filled:
+        out["details_source"] = "legal corpus summary (unverified, check the official text)"
+    return out
+
+
 def _facts_fingerprint(case_id: str, facts: Dict[str, Any], sig: Dict[str, Any]) -> tuple:
     h = hashlib.sha256()
     for o in sorted(facts["observations"], key=lambda o: o["observation_id"]):
@@ -285,6 +320,7 @@ def get_fir_legal_advisory(case_id: str) -> Dict[str, Any]:
     demo = data.get("accused_demographic_assessment") if isinstance(data.get("accused_demographic_assessment"), dict) else {}
     sections = []
     for s in sch.records(data.get("recommended_sections")):
+        s = _fill_from_corpus(s)
         sections.append({
             "act": sch.text(s.get("act"), 200) or "", "section": sch.text(s.get("section"), 40) or "", "title": sch.text(s.get("title"), 300) or "",
             "cognizable": s.get("cognizable") if isinstance(s.get("cognizable"), bool) else None,
@@ -292,6 +328,7 @@ def get_fir_legal_advisory(case_id: str) -> Dict[str, Any]:
             "punishment": sch.text(s.get("punishment"), 300), "triable_by": sch.text(s.get("triable_by"), 200),
             "justification": sch.text(s.get("justification"), 800) or "",
             "statutory_ingredients_met": sch.string_list(s.get("statutory_ingredients_met"), limit=10, item_limit=300),
+            "details_source": s.get("details_source"),
         })
     safeguards = []
     for g in sch.records(data.get("evidentiary_safeguards")):

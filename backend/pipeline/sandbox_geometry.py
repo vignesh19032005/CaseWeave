@@ -2372,6 +2372,58 @@ def _actor_pos_at(actor: dict, t: float) -> Optional[List[float]]:
     return segs[-1].get("pos") or segs[-1]["route"][-1]
 
 
+VISIBILITY_STEP_S = 0.5
+VISIBILITY_MAX_SAMPLES = 2400   # per person and observer; long scenarios are sampled more coarsely rather than slowly
+
+
+def visibility_ranges(plan: Dict[str, Any], layout: dict, step: float = VISIBILITY_STEP_S) -> List[Dict[str, Any]]:
+    """For every camera and witness position, the time ranges (in scenario seconds) during which each person can be seen from it.
+    It uses the same line-of-sight test the validator uses for claimed sightings (distance, field of view, floors, walls, furniture), sampled
+    over time, so what the screen shows is what was checked. A person is only counted while they are in the scene (between their first and last
+    step), and nobody is counted as watching themselves. Ranges are accurate to about one sample step."""
+    observers = layout.get("observers", [])
+    actors = plan.get("actors", [])
+    if not observers or not actors:
+        return []
+    sc = get_scene(layout)
+    own: Dict[str, str] = {}
+    for a in actors:
+        spot = _witness_spot_for({"id": a["id"], "label": a.get("label", "")}, layout)
+        if spot is not None:
+            own[spot["id"]] = a["id"]
+    out: List[Dict[str, Any]] = []
+    for ob in observers:
+        for a in actors:
+            if own.get(ob["id"]) == a["id"] or not a["segments"]:
+                continue
+            t_in, t_out = a["segments"][0]["t0"], a["segments"][-1]["t1"]
+            n = max(1, int(math.ceil((t_out - t_in) / step)))
+            dt = step if n <= VISIBILITY_MAX_SAMPLES else (t_out - t_in) / VISIBILITY_MAX_SAMPLES
+            ranges: List[List[float]] = []
+            start: Optional[float] = None
+            last = t_in
+            t = t_in
+            while t <= t_out + 1e-9:
+                pos = _actor_pos_at(a, t)
+                vis = False
+                if pos is not None:
+                    vis, _ = sc.visible(ob, pos, pos[1])
+                if vis and start is None:
+                    start = t
+                if not vis and start is not None:
+                    ranges.append([round(start, 2), round(last, 2)])
+                    start = None
+                last = t
+                t += dt
+            if start is not None:
+                ranges.append([round(start, 2), round(min(last, t_out), 2)])
+            ranges = [r for r in ranges if r[1] > r[0]]   # a single sample is not a range
+            if ranges:
+                out.append({"observer": ob["id"], "observer_label": ob.get("label", ob["id"]), "kind": ob["kind"], "person": a["id"], "person_label": a.get("label", a["id"]),
+                            "ranges": ranges, "seen_for_s": round(sum(r[1] - r[0] for r in ranges), 1)})
+    return out
+
+
 def layout_similarity(a: dict, b: dict) -> Dict[str, Any]:
     """How alike two layouts built from the same evidence are (rooms, sizes, furniture,
     doors and their recorded condition). Used to measure run-to-run variation of the model.

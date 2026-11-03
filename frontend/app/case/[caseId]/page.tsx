@@ -151,6 +151,7 @@ type RecommendedSection = {
   bailable?: boolean;
   punishment?: string;
   triable_by?: string;
+  details_source?: string | null;
   justification?: string;
   statutory_ingredients_met?: string[];
 };
@@ -2029,20 +2030,29 @@ function LegalTab({ caseId }: { caseId: string }) {
                       <span className="bg-purple-950/70 text-purple-300 border border-purple-800/60 px-2 py-0.5 rounded text-[10px] font-bold">
                         NON-BAILABLE
                       </span>
-                    ) : (
+                    ) : sec.bailable === true ? (
                       <span className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded text-[10px]">
                         BAILABLE
                       </span>
+                    ) : (
+                      <span className="bg-zinc-900 text-zinc-500 border border-zinc-800 px-2 py-0.5 rounded text-[10px]" title="Neither the model nor the legal corpus states whether this offence is bailable. Check the official text.">
+                        BAILABILITY NOT STATED
+                      </span>
                     )}
-                    <span className="bg-amber-950/50 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded text-[10px]">
-                      {sec.punishment}
-                    </span>
+                    {sec.punishment ? (
+                      <span className="bg-amber-950/50 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded text-[10px]">
+                        {sec.punishment}
+                      </span>
+                    ) : (
+                      <span className="bg-zinc-900 text-zinc-500 border border-zinc-800 px-2 py-0.5 rounded text-[10px]">punishment not stated</span>
+                    )}
                   </div>
                   <h4 className="text-sm font-semibold text-white mt-1.5">{sec.title}</h4>
                 </div>
                 <div className="text-right text-xs text-zinc-400 shrink-0">
                   <span className="text-zinc-500 block text-[10px] uppercase">Triable By</span>
-                  <span className="font-medium text-zinc-300">{sec.triable_by}</span>
+                  <span className="font-medium text-zinc-300">{sec.triable_by || "not stated"}</span>
+                  {sec.details_source && <span className="block text-[9px] text-zinc-600 max-w-[200px]" title={sec.details_source}>punishment, bail and court from the bundled legal summary</span>}
                 </div>
               </div>
 

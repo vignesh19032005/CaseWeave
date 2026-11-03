@@ -3,6 +3,9 @@
 import React, { useMemo } from "react";
 import * as THREE from "three";
 import { Edges } from "@react-three/drei";
+import { FinishMaterial, FinishProvider } from "./SandboxMaterials";
+import type { Finish } from "./SandboxMaterials";
+import { ModelOrFallback, modelFor } from "./SandboxModels";
 
 // Parametric furniture: every shape is built from the object's real footprint and height,
 // so it is the right size for any case. The shape is chosen from the category the model gave,
@@ -42,12 +45,34 @@ function Slab({ size, pos, color, rough = 0.7 }: { size: [number, number, number
   return (
     <mesh position={pos} castShadow receiveShadow>
       <boxGeometry args={size} />
-      <meshStandardMaterial color={color} roughness={rough} />
+      <FinishMaterial color={color} rough={rough} />
     </mesh>
   );
 }
 
-export function FurnitureModel({ kind, w, d, h, color, hot, assumed }: { kind: FurnitureKind; w: number; d: number; h: number; color: string; hot: boolean; assumed: boolean }) {
+const FINISH_OF: Record<FurnitureKind, Finish> = { counter: "wood", shelf: "wood", cabinet: "steel", table: "wood", chair: "wood", bed: "plain", appliance: "steel", vehicle: "paint", tree: "plain", fence: "wood", box: "plain" };
+
+type ModelProps = { kind: FurnitureKind; w: number; d: number; h: number; color: string; hot: boolean; assumed: boolean; label?: string };
+
+/** The object's own material (grained wood, brushed steel, paint) with its red outline for anything the evidence does not describe. */
+export function FurnitureModel(props: ModelProps) {
+  const plain = (
+    <FinishProvider value={FINISH_OF[props.kind]}>
+      <FurnitureModelInner {...props} />
+    </FinishProvider>
+  );
+  // A real model only for objects the evidence describes (assumed ones stay schematic with their red outline) and only when the label matches it
+  const spec = props.assumed || !props.label ? null : modelFor(props.kind, props.label);
+  if (!spec) return plain;
+  return (
+    <group>
+      <ModelOrFallback spec={spec} w={props.w} d={props.d} h={props.h} fallback={plain} />
+      {props.hot && <mesh position={[0, props.h / 2, 0]}><boxGeometry args={[props.w, props.h, props.d]} /><meshBasicMaterial color="#f59e0b" wireframe /></mesh>}
+    </group>
+  );
+}
+
+function FurnitureModelInner({ kind, w, d, h, color, hot, assumed }: ModelProps) {
   const c = hot ? "#f59e0b" : color;
   const dark = useMemo(() => shade(c, 0.6), [c]);
   const light = useMemo(() => shade(c, 1.25), [c]);
@@ -55,7 +80,7 @@ export function FurnitureModel({ kind, w, d, h, color, hot, assumed }: { kind: F
   const body = (
     <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
       <boxGeometry args={[w, h, d]} />
-      <meshStandardMaterial color={c} roughness={0.65} />
+      <FinishMaterial color={c} rough={0.65} />
       <Edges color={edge} />
     </mesh>
   );

@@ -214,6 +214,16 @@ export interface TimeAnchor {
   clock_text: string;
 }
 
+export interface VisibilityRange {
+  observer: string;
+  observer_label: string;
+  kind: "camera" | "witness";
+  person: string;
+  person_label: string;
+  ranges: [number, number][];
+  seen_for_s: number;
+}
+
 export interface Scenario {
   scenario_id: string;
   run_id: string;
@@ -269,6 +279,7 @@ export interface Scenario {
   citations_removed: number;
   strengthened?: { from_score: number; to_score: number };
   repair?: { problems_found: string[]; problems_left: number };
+  visibility?: VisibilityRange[];
   differs_by?: string;
   less_supported?: boolean;
   support_level?: "best_supported" | "alternative" | "less_supported";
@@ -308,7 +319,10 @@ export interface RunInfo {
     calls?: { step: string; provider: string; model: string; prompt_hash: string; seconds: number; redacted?: boolean }[];
     evidence?: { guard?: { checked: boolean; removed: number; findings: { kind: string; excerpt: string }[]; note: string }; observations_total: number; observations_shown: number; observations_omitted: number; timed_observations: number; evidence_files: number };
     redaction?: { enabled: boolean; replacements: Record<string, number>; not_covered: string[] };
-    vision_cues?: { enabled: boolean; images_sent: number };
+    vision_cues?: {
+      enabled: boolean; images_sent: number; photos_read?: number; note?: string;
+      photos?: { evidence_id: string; filename: string; scene: string; items: { what: string; kind: string; state: string; note: string }[]; scale_cues: string[]; cannot_tell: string[] }[];
+    };
     layout_reused_from?: string;
     edited_from?: string;
     provider_mode?: "auto" | "meta_only" | "local_only";

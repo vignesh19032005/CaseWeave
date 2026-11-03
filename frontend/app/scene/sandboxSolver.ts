@@ -1,7 +1,7 @@
 // Pure playback maths. No React, no three.js: every person's position, heading,
 // pose and the clock at any time t are read straight from the backend's timed
 // segments, so what is on screen is exactly what the validator checked.
-import type { PlanActor, Scenario, Segment, Vec3 } from "./sandboxTypes";
+import type { PlanActor, Scenario, Segment, Vec3, VisibilityRange } from "./sandboxTypes";
 
 export interface ActorState {
   id: string;
@@ -322,4 +322,16 @@ export function fromDisplay(ax: TimeAxis, d: number): number {
     return x <= half ? p.t0 + x : p.t1 - half + (x - half);
   }
   return ax.pieces[ax.pieces.length - 1].t1;
+}
+
+
+// ---------------------------------------------------------------- who is seen right now
+
+/** For each camera or witness position, the people it can see at time t (from the ranges the backend worked out with the line-of-sight test). */
+export function seenAt(vis: VisibilityRange[] | undefined, t: number): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const v of vis ?? []) {
+    if (v.ranges.some(([a, b]) => t >= a - 1e-9 && t <= b + 1e-9)) (out[v.observer] ||= []).push(v.person_label);
+  }
+  return out;
 }

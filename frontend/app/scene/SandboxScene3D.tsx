@@ -8,6 +8,10 @@ import type { InspectedItem, Layout, Observer, Opening, OpeningState, Room, Scen
 import { SPIRAL_R } from "./sandboxSolver";
 import type { ActorState, SimState } from "./sandboxSolver";
 import { FurnitureModel, inferKind } from "./SandboxFurniture";
+import { FloorMaterial, SceneEnvironment, WallMaterial } from "./SandboxMaterials";
+import { ModelBoundary, PERSON_MODEL, holdClip, seekClip, tintFigure, useRiggedClone } from "./SandboxModels";
+import CinematicEffects from "./SandboxEffects";
+import PointView from "./SandboxPointView";
 import { Label3D, LabelProvider, labelState } from "./SandboxLabels";
 import type { LabelMode } from "./SandboxLabels";
 
@@ -58,11 +62,31 @@ function bounds(layout: Layout) {
   return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, diag: Math.max(8, Math.hypot(x1 - x0, z1 - z0)) };
 }
 
+const rayFrom = new THREE.Vector3();
+const rayDir = new THREE.Vector3();
+const caster = new THREE.Raycaster();
+
+/** Pulls the follow camera in front of any wall or door leaf between it and the person, so it never sits inside one. */
+function clearOfWalls(scene: THREE.Scene, blockers: THREE.Object3D[], look: THREE.Vector3, want: THREE.Vector3) {
+  if (!blockers.length) return;
+  rayFrom.copy(look);
+  rayDir.copy(want).sub(look);
+  const full = rayDir.length();
+  if (full < 1e-3) return;
+  rayDir.divideScalar(full);
+  caster.set(rayFrom, rayDir);
+  caster.far = full;
+  const hit = caster.intersectObjects(blockers, false)[0];
+  if (hit) want.copy(look).addScaledVector(rayDir, Math.max(1.0, hit.distance - 0.3));
+}
+
 function CameraRig({ layout, mode, sim, focus, dragMode }: { layout: Layout; mode: CameraMode; sim: SimState; focus: Vec3 | null; dragMode: "rotate" | "move" }) {
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const wantPos = useRef(new THREE.Vector3());
   const wantLook = useRef(new THREE.Vector3());
   const settling = useRef(true);
+  const blockers = useRef<THREE.Object3D[]>([]);
+  const nextScan = useRef(0);
   const b = useMemo(() => bounds(layout), [layout]);
   const observer: Observer | undefined = mode.startsWith("observer:") ? layout.observers.find((o) => o.id === mode.slice(9)) : undefined;
   const floorY = (room: string) => layout.rooms.find((r) => r.id === room)?.floor_y ?? 0;
@@ -107,6 +131,13 @@ function CameraRig({ layout, mode, sim, focus, dragMode }: { layout: Layout; mod
       const p = sim.primary;
       wantPos.current.set(p.pos[0] - Math.sin(p.heading) * 3.6, p.pos[1] + 2.3, p.pos[2] - Math.cos(p.heading) * 3.6);
       wantLook.current.set(p.pos[0], p.pos[1] + 1.1, p.pos[2]);
+      if (st.clock.elapsedTime >= nextScan.current) {        // walls and doors are rescanned twice a second (they open and close)
+        nextScan.current = st.clock.elapsedTime + 0.5;
+        const found: THREE.Object3D[] = [];
+        st.scene.traverse((o) => { if (o.userData.blocker) found.push(o); });
+        blockers.current = found;
+      }
+      clearOfWalls(st.scene, blockers.current, wantLook.current, wantPos.current);
       settling.current = true;
     }
     if (!settling.current) return;
@@ -189,9 +220,9 @@ function Shell({ layout, cutaway, maxLevel, onInspect }: { layout: Layout; cutaw
         const size: Vec3 = s.orient === "x" ? [len, h, T] : [T, h, len];
         const pos: Vec3 = s.orient === "x" ? [mid, s.y + h / 2, s.line] : [s.line, s.y + h / 2, mid];
         return (
-          <mesh key={i} position={pos} onClick={click} castShadow receiveShadow>
+          <mesh key={i} position={pos} onClick={click} castShadow receiveShadow userData={{ blocker: true }}>
             <boxGeometry args={size} />
-            <meshStandardMaterial color="#5b6b82" roughness={0.75} transparent={cutaway} opacity={cutaway ? 0.95 : 1} />
+            <WallMaterial w={Math.max(len, T)} h={h} cutaway={cutaway} />
           </mesh>
         );
       })}
@@ -243,12 +274,12 @@ function Floor({ room, hole, onInspect }: { room: Room; hole: Rect4 | null; onIn
       {hole ? slabPieces(room.rect, hole).map((q, i) => (
         <mesh key={i} position={[(q[0] + q[1]) / 2, room.floor_y - 0.06, (q[2] + q[3]) / 2]} receiveShadow>
           <boxGeometry args={[q[1] - q[0], 0.12, q[3] - q[2]]} />
-          <meshStandardMaterial color="#4b5778" roughness={0.85} />
+          <FloorMaterial w={q[1] - q[0]} l={q[3] - q[2]} color="#4b5778" />
         </mesh>
       )) : (
         <mesh position={[cx, room.floor_y - 0.06, cz]} receiveShadow>
           <boxGeometry args={[w, 0.12, l]} />
-          <meshStandardMaterial map={tex} roughness={0.85} />
+          <FloorMaterial map={tex} w={w} l={l} />
         </mesh>
       )}
       {!room.observed && (
@@ -309,7 +340,7 @@ function DoorLeaf({ op, layout, actors, state, shut }: { op: Opening; layout: La
   return (
     <group position={[op.gap_pos[0], y, op.gap_pos[2]]} rotation={[0, op.orient === "z" ? Math.PI / 2 : 0, 0]}>
       <group ref={pivot} position={[-w / 2, 0, 0]}>
-        <mesh position={[w / 2, h / 2, 0]} castShadow>
+        <mesh position={[w / 2, h / 2, 0]} castShadow userData={{ blocker: true }}>
           <boxGeometry args={[w - 0.04, h - 0.04, 0.05]} />
           <meshStandardMaterial color={state === "forced" ? "#7f1d1d" : "#8b7355"} roughness={0.6} transparent opacity={0.95} />
         </mesh>
@@ -436,7 +467,7 @@ function Furniture({ layout, touched, effects, showLabels, selectedId, maxLevel,
               });
             }}
           >
-            <FurnitureModel kind={kind} w={f.footprint_m[0]} d={f.footprint_m[1]} h={f.height_m} color={f.color_hex} hot={hot || sel} assumed={f.basis === "assumed"} />
+            <FurnitureModel kind={kind} w={f.footprint_m[0]} d={f.footprint_m[1]} h={f.height_m} color={f.color_hex} hot={hot || sel} assumed={f.basis === "assumed"} label={f.label} />
             {(showLabels || hot || sel) && <Label3D text={f.label} color="#e2e8f0" bg="#0b1020d9" position={[0, f.height_m + 0.45, 0]} priority={sel ? 0 : hot ? 1 : 2} />}
           </group>
         );
@@ -471,14 +502,97 @@ function KeyPlaces({ layout, activeLabels, showLabels, maxLevel, onInspect }: { 
   );
 }
 
-function Observers({ layout, inside, showLabels, selectedId, maxLevel, onInspect }: { layout: Layout; inside: string | null; showLabels: boolean; selectedId: string | null; maxLevel: number | null; onInspect: (i: InspectedItem) => void }) {
+const CALM_CAMERA = new THREE.Color("#38bdf8");
+const CALM_WITNESS = new THREE.Color("#a78bfa");
+const ALERT = new THREE.Color("#ef4444");
+
+/** The volume a camera or witness can see: a wedge from the lens out to its range, calm until someone steps into it, then pulsing red. */
+function ViewVolume({ ob, floorY, seen }: { ob: Observer; floorY: number; seen: boolean }) {
+  const fillMat = useRef<THREE.MeshBasicMaterial>(null);
+  const edgeMat = useRef<THREE.LineBasicMaterial>(null);
+  const { fill, edges } = useMemo(() => {
+    const R = Math.min(ob.range_m, 16);
+    const fov = (Math.min(ob.fov_deg, 360) * Math.PI) / 180;
+    const full = fov >= Math.PI * 1.9;
+    const n = Math.max(10, Math.round((fov * 180) / Math.PI / 6));
+    const ey = ob.eye_height_m;
+    const top = Math.max(ey, 1.9);
+    const apex: Vec3 = [0, ey, 0];
+    const g: Vec3[] = [];
+    const t: Vec3[] = [];
+    for (let i = 0; i <= n; i++) {
+      const th = ob.yaw - fov / 2 + (fov * i) / n;
+      g.push([R * Math.sin(th), 0.03, R * Math.cos(th)]);
+      t.push([R * Math.sin(th), top, R * Math.cos(th)]);
+    }
+    const pos: number[] = [];
+    const tri = (a: Vec3, b: Vec3, c: Vec3) => pos.push(...a, ...b, ...c);
+    for (let i = 0; i < n; i++) {
+      tri(apex, g[i], g[i + 1]);          // the lower face, down to the floor
+      tri(apex, t[i + 1], t[i]);          // the upper face
+      tri(g[i], t[i], t[i + 1]);          // the far face
+      tri(g[i], t[i + 1], g[i + 1]);
+    }
+    if (!full) {
+      tri(apex, t[0], g[0]);              // the two side faces
+      tri(apex, g[n], t[n]);
+    }
+    const f = new THREE.BufferGeometry();
+    f.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    const lines: number[] = [];
+    const seg = (a: Vec3, b: Vec3) => lines.push(...a, ...b);
+    for (let i = 0; i < n; i++) seg(g[i], g[i + 1]);
+    if (!full) {
+      seg(apex, g[0]);
+      seg(apex, g[n]);
+      seg(apex, t[0]);
+      seg(apex, t[n]);
+    }
+    const e = new THREE.BufferGeometry();
+    e.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+    return { fill: f, edges: e };
+  }, [ob.range_m, ob.fov_deg, ob.yaw, ob.eye_height_m]);
+  useEffect(() => () => { fill.dispose(); edges.dispose(); }, [fill, edges]);
+  const fade = useRef(1);
+  useFrame((st, delta) => {
+    const m = fillMat.current;
+    const l = edgeMat.current;
+    if (!m || !l) return;
+    // when the viewer's own camera is inside the volume it would tint the whole picture, so the fill fades out while it is in there
+    const c = st.camera.position;
+    const lx = c.x - ob.pos[0], lz = c.z - ob.pos[2], ly = c.y - floorY;
+    const dist = Math.hypot(lx, lz);
+    let within = dist < Math.min(ob.range_m, 16) && ly > -0.2 && ly < Math.max(ob.eye_height_m, 1.9) + 0.5;
+    if (within && dist > 1e-6 && ob.fov_deg < 355) {
+      const diff = (Math.atan2(lx, lz) - ob.yaw + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+      within = Math.abs(diff) <= (ob.fov_deg * Math.PI) / 360;
+    }
+    fade.current += ((within ? 0.08 : 1) - fade.current) * (1 - Math.exp(-delta * 8));
+    const pulse = 0.5 + 0.5 * Math.sin((performance.now() / 1000) * 7);
+    const calm = ob.kind === "camera" ? CALM_CAMERA : CALM_WITNESS;
+    m.color.copy(seen ? ALERT : calm);
+    m.opacity = (seen ? 0.14 + 0.16 * pulse : 0.06) * fade.current;
+    l.color.copy(seen ? ALERT : calm);
+    l.opacity = (seen ? 0.55 + 0.4 * pulse : 0.28) * Math.max(fade.current, 0.35);
+  });
+  return (
+    <group position={[ob.pos[0], floorY, ob.pos[2]]}>
+      <mesh geometry={fill} renderOrder={3} raycast={() => null}>
+        <meshBasicMaterial ref={fillMat} color="#38bdf8" transparent opacity={0.06} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <lineSegments geometry={edges} renderOrder={4} raycast={() => null}>
+        <lineBasicMaterial ref={edgeMat} color="#38bdf8" transparent opacity={0.28} />
+      </lineSegments>
+    </group>
+  );
+}
+
+function Observers({ layout, inside, showLabels, selectedId, seen, maxLevel, onInspect }: { layout: Layout; inside: string | null; showLabels: boolean; selectedId: string | null; seen: Record<string, string[]>; maxLevel: number | null; onInspect: (i: InspectedItem) => void }) {
   return (
     <group>
       {layout.observers.filter((o) => maxLevel === null || o.level <= maxLevel).map((ob) => {
         const y = ob.room === "outside" ? 0 : layout.rooms.find((r) => r.id === ob.room)?.floor_y ?? 0;
         const color = ob.kind === "camera" ? "#3b82f6" : "#a855f7";
-        const fov = (Math.min(ob.fov_deg, 360) * Math.PI) / 180;
-        const range = Math.min(ob.range_m, 16);
         const hidden = inside === ob.id; // the view from this camera must not be blocked by its own marker
         return (
           <group
@@ -486,13 +600,11 @@ function Observers({ layout, inside, showLabels, selectedId, maxLevel, onInspect
             onClick={(e) => {
               e.stopPropagation();
               onInspect({ id: ob.id, nodeKind: "observer", title: ob.label, kind: `${ob.kind === "camera" ? "Camera" : "Witness position"} (sees ${ob.fov_deg.toFixed(0)}° up to ${ob.range_m.toFixed(0)} m)`,
-                basis: ob.basis, description: "The shaded area shows what this position can see, if nothing blocks the view. Claimed sightings are checked against walls and furniture.", refs: ob.evidence_refs, focus: ob.pos });
+                basis: ob.basis, description: "The shaded volume is its field of view and range. It turns red, with a SEEN label, while a person is inside it with a clear line of sight (walls, floors and furniture are checked). Claimed sightings are checked the same way.", refs: ob.evidence_refs, focus: ob.pos });
             }}
           >
-            {!hidden && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[ob.pos[0], y + 0.03, ob.pos[2]]}>
-              <circleGeometry args={[range, 40, ob.yaw - Math.PI / 2 - fov / 2, fov]} />
-              <meshBasicMaterial color={color} transparent opacity={0.1} side={THREE.DoubleSide} depthWrite={false} />
-            </mesh>}
+            {!hidden && <ViewVolume ob={ob} floorY={y} seen={Boolean(seen[ob.id]?.length)} />}
+            {!hidden && seen[ob.id]?.length ? <Label3D text={`SEEN · ${seen[ob.id].join(", ")}`} color="#fca5a5" bg="#450a0aee" position={[ob.pos[0], y + (ob.kind === "camera" ? ob.eye_height_m + 0.9 : 1.2), ob.pos[2]]} priority={1} /> : null}
             {hidden ? null : ob.kind === "camera" ? (
               <group position={[ob.pos[0], y + ob.eye_height_m, ob.pos[2]]} rotation={[0, ob.yaw, 0]}>
                 <mesh castShadow><boxGeometry args={[0.18, 0.14, 0.3]} /><meshStandardMaterial color="#1e293b" /></mesh>
@@ -583,6 +695,42 @@ function OverlayRoutes({ scenarios, topY }: { scenarios: Scenario[]; topY: numbe
 
 const angleDiff = (a: number, b: number) => ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 
+/** A rigged walking figure. Walking is driven by distance travelled so the feet match the ground; other poses are stylised (lean, drop, lie) because the model has one animation. */
+function RiggedBody({ actor, rootRef }: { actor: ActorState; rootRef: React.RefObject<THREE.Group | null> }) {
+  const { root, scale, offset, clips } = useRiggedClone(PERSON_MODEL.url, 1.75);
+  const pose = useRef<THREE.Group>(null);
+  const mixer = useMemo(() => new THREE.AnimationMixer(root), [root]);
+  const action = useMemo(() => (clips[0] ? mixer.clipAction(clips[0]) : null), [mixer, clips]);
+  useEffect(() => { holdClip(action); return () => { mixer.stopAllAction(); }; }, [action, mixer]);
+  useEffect(() => { tintFigure(root, actor.color); }, [root, actor.color]);
+  useFrame(() => {
+    void rootRef;
+    const dur = clips[0]?.duration ?? 1;
+    const t = performance.now() / 1000;
+    const walking = actor.pose === "walk" || actor.pose === "run";
+    let lean = actor.pose === "run" ? 0.15 : 0, drop = 0, lie = false, time = 0;
+    if (walking) time = (actor.travelled / 1.5) % 1 * dur;
+    switch (actor.pose) {
+      case "struggle": time = ((t * 1.6) % 1) * dur; lean = 0.25 + Math.sin(t * 9) * 0.12; break;
+      case "reach": lean = 0.3; break;
+      case "crouch": drop = 0.35; lean = 0.55; break;
+      case "sit": drop = 0.45; break;
+      case "lie": lie = true; break;
+      default: break;
+    }
+    seekClip(action, mixer, time);
+    if (pose.current) {
+      pose.current.rotation.x = lie ? -Math.PI / 2 : lean;
+      pose.current.position.set(0, lie ? 0.16 : -drop, lie ? -0.85 : 0);
+    }
+  });
+  return (
+    <group ref={pose}>
+      <group position={offset} scale={scale}><primitive object={root} /></group>
+    </group>
+  );
+}
+
 function Person({ actor, visible }: { actor: ActorState; visible: boolean }) {
   const root = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
@@ -647,9 +795,8 @@ function Person({ actor, visible }: { actor: ActorState; visible: boolean }) {
     if (head.current) head.current.rotation.y = headYaw;
   });
 
-  return (
-    <group ref={root}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}><circleGeometry args={[0.32, 24]} /><meshBasicMaterial color="#000" transparent opacity={0.35} /></mesh>
+  const procedural = (
+    <>
       <group ref={lLeg} position={[-0.11, 0.9, 0]}><mesh position={[0, -0.45, 0]} castShadow><capsuleGeometry args={[0.07, 0.7, 4, 8]} /><meshStandardMaterial color="#1e293b" /></mesh></group>
       <group ref={rLeg} position={[0.11, 0.9, 0]}><mesh position={[0, -0.45, 0]} castShadow><capsuleGeometry args={[0.07, 0.7, 4, 8]} /><meshStandardMaterial color="#1e293b" /></mesh></group>
       <group ref={body} position={[0, 0.9, 0]}>
@@ -664,6 +811,18 @@ function Person({ actor, visible }: { actor: ActorState; visible: boolean }) {
           {actor.carrying && <mesh position={[0.02, -0.55, 0.08]}><boxGeometry args={[0.16, 0.16, 0.16]} /><meshStandardMaterial color="#9ca3af" /></mesh>}
         </group>
       </group>
+    </>
+  );
+
+  return (
+    <group ref={root}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}><circleGeometry args={[0.32, 24]} /><meshBasicMaterial color="#000" transparent opacity={0.35} /></mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}><ringGeometry args={[0.3, 0.37, 28]} /><meshBasicMaterial color={clothes} transparent opacity={0.9} /></mesh>
+      <ModelBoundary fallback={procedural}>
+        <React.Suspense fallback={procedural}>
+          <RiggedBody actor={actor} rootRef={root} />
+        </React.Suspense>
+      </ModelBoundary>
     </group>
   );
 }
@@ -697,6 +856,9 @@ export interface SceneProps {
   selectedId: string | null;
   maxLevel: number | null;
   daylight: number;
+  seen?: Record<string, string[]>;
+  cinematic?: boolean;
+  pointView?: boolean;
   dragMode: "rotate" | "move";
   onInspect: (i: InspectedItem) => void;
 }
@@ -721,6 +883,7 @@ export default function SandboxScene3D(p: SceneProps) {
       <directionalLight position={[b.cx + 10, 22, b.cz - 8]} intensity={0.25 + 0.9 * day} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-b.diag} shadow-camera-right={b.diag} shadow-camera-top={b.diag} shadow-camera-bottom={-b.diag} />
       <directionalLight position={[b.cx - 8, 10, b.cz + 8]} intensity={0.2 + 0.3 * day} />
       <LabelProvider muted={p.labelMode === "off"}>
+      <SceneEnvironment daylight={day} />
       <CameraRig layout={layout} mode={p.camera} sim={sim} focus={p.focus} dragMode={p.dragMode} />
       <Ground layout={layout} />
       {layout.rooms.filter((r) => p.maxLevel === null || r.level <= p.maxLevel).map((r) => <Floor key={r.id} room={r} hole={stairHole(layout, r)} onInspect={p.onInspect} />)}
@@ -729,11 +892,13 @@ export default function SandboxScene3D(p: SceneProps) {
       <Stairs layout={layout} maxLevel={p.maxLevel} showLabels={p.labelMode === "all"} onInspect={p.onInspect} />
       <Furniture layout={layout} touched={touched} effects={sim.effectStates} showLabels={p.labelMode === "all"} selectedId={p.selectedId} maxLevel={p.maxLevel} onInspect={p.onInspect} />
       <KeyPlaces layout={layout} activeLabels={activeLabels} showLabels={p.labelMode === "all"} maxLevel={p.maxLevel} onInspect={p.onInspect} />
-      <Observers layout={layout} showLabels={p.labelMode === "all"} selectedId={p.selectedId} inside={p.camera.startsWith("observer:") ? p.camera.slice(9) : null} maxLevel={p.maxLevel} onInspect={p.onInspect} />
+      <Observers layout={layout} showLabels={p.labelMode === "all"} selectedId={p.selectedId} seen={p.seen ?? {}} inside={p.camera.startsWith("observer:") ? p.camera.slice(9) : null} maxLevel={p.maxLevel} onInspect={p.onInspect} />
       {scenario && <RouteLines scenario={scenario} sim={sim} topY={topY} onInspect={p.onInspect} />}
       {p.overlay.length > 0 && <OverlayRoutes scenarios={p.overlay} topY={topY} />}
       {scenario && sim.actors.map((a) => <Person key={a.id} actor={a} visible={p.maxLevel === null || levelOf(a.space) <= p.maxLevel} />)}
       {scenario && <PeopleLabels actors={sim.actors.filter((a) => p.maxLevel === null || levelOf(a.space) <= p.maxLevel)} />}
+      <PointView enabled={!!p.pointView} />
+      {p.cinematic && <CinematicEffects />}
       </LabelProvider>
     </Canvas>
   );
