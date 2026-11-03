@@ -135,7 +135,7 @@ def link_photos(photo_paths: List[Dict[str, Any]], terms: List[Dict[str, str]], 
 
 
 def _now() -> str:
-    return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
 
 
 def create_photo_links(case_id: str, user: Dict[str, Any], segment: Optional[Callable] = None) -> Dict[str, Any]:

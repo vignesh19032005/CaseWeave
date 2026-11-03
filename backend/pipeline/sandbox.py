@@ -43,7 +43,7 @@ from pipeline.redaction import build_redactor, redaction_enabled
 logger = logging.getLogger("caseweave.sandbox")
 
 SCHEMA_VERSION = geo.SCHEMA_VERSION
-GENERATION_TIMEOUT_MIN = 15
+GENERATION_TIMEOUT_MIN = 60  # a full generation makes up to ~10 model calls of up to 5 minutes each
 RAW_RESPONSE_LIMIT = 80_000
 MAX_CUSTOM_PER_RUN = 25
 MODEL_ATTEMPTS = 3
@@ -86,7 +86,7 @@ class ModelFailure(SandboxError):
 # --------------------------------------------------------------------------
 
 def _now() -> str:
-    return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
 
 
 def _jl(raw: Any, default: Any) -> Any:
@@ -105,13 +105,13 @@ def _as_list(v: Any) -> list:
 def _audit(case_id: str, user: Dict[str, Any], action: str, target: str) -> None:
     conn = get_conn()
     try:
-        append_audit_event(conn, case_id, user.get("role", "system"), action, f"{target}|by:{user.get('username', 'system')}"[:128])
+        append_audit_event(conn, case_id, user.get("role", "system"), action, f"{target}|by:{user.get('username', 'system')}"[:128], actor_user=user.get("username", "system"))
     finally:
         conn.close()
 
 
 def _audit_in_txn(conn, case_id: str, user: Dict[str, Any], action: str, target: str):
-    return append_audit_event_txn(conn, case_id, user.get("role", "system"), action, f"{target}|by:{user.get('username', 'system')}"[:128])
+    return append_audit_event_txn(conn, case_id, user.get("role", "system"), action, f"{target}|by:{user.get('username', 'system')}"[:128], actor_user=user.get("username", "system"))
 
 
 def _trim_raw(text: str) -> str:
@@ -668,7 +668,7 @@ def _row_run(r: Dict[str, Any], *, full: bool) -> Dict[str, Any]:
 
 
 def _expire_stuck(conn, case_id: str) -> None:
-    cutoff = (datetime.datetime.utcnow() - datetime.timedelta(minutes=GENERATION_TIMEOUT_MIN)).isoformat(timespec="seconds") + "Z"
+    cutoff = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(minutes=GENERATION_TIMEOUT_MIN)).isoformat(timespec="seconds") + "Z"
     conn.execute("UPDATE sandbox_runs SET status='failed', status_message='Generation was interrupted (server restarted or timed out). Start it again.', completed_at=? "
                  "WHERE case_id=? AND status='generating' AND created_at < ?", (_now(), case_id, cutoff))
     conn.commit()

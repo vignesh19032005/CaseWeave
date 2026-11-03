@@ -2,7 +2,9 @@
 // endpoint. All endpoints require a Bearer JWT (Stage 12 RBAC) — this
 // centralizes that instead of repeating it in every fetch call.
 
-export const API = "http://127.0.0.1:8010";
+// Base URL of the CaseWeave API. Set NEXT_PUBLIC_API_URL when the API is not on this machine's port 8010
+// (e.g. a station server on the LAN); it must also be listed in the API's ALLOWED_ORIGINS.
+export const API = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8010").replace(/\/+$/, "");
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -15,6 +17,10 @@ export function setToken(token: string) {
 
 export function clearToken() {
   window.localStorage.removeItem("cw_token");
+  // Chat history is kept per case in this browser; never leave it behind for the next person at a shared workstation.
+  for (const key of Object.keys(window.localStorage)) {
+    if (key.startsWith("cw_chat_")) window.localStorage.removeItem(key);
+  }
 }
 
 export class ApiError extends Error {
@@ -28,7 +34,55 @@ export class ApiError extends Error {
 function handleUnauthorized() {
   clearToken();
   if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    window.location.href = "/login";
+    // full navigation on purpose: drops all in-memory state of the signed-out session
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/login");
+  }
+}
+
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function goToPasswordChange() {
+  if (typeof window !== "undefined" && window.location.pathname !== "/change-password") {
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/change-password");
+  }
+}
+
+async function failFrom(res: Response): Promise<never> {
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new ApiError(401, "session expired — redirecting to login");
+  }
+  const body = await res.json().catch(() => ({ detail: res.statusText }));
+  const detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail || body);
+  if (res.status === 403 && detail.startsWith("password change required")) goToPasswordChange();
+  throw new ApiError(res.status, detail || res.statusText);
+}
+
+/** Fetches an authenticated binary resource and returns it as a Blob. */
+async function fetchBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${API}${path}`, { headers: authHeaders() });
+  if (!res.ok) await failFrom(res);
+  return res.blob();
+}
+
+/** Fetches an authenticated file and hands it to the browser as a download. */
+async function downloadFile(path: string, filename: string): Promise<void> {
+  const url = URL.createObjectURL(await fetchBlob(path));
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -47,10 +101,11 @@ async function request(path: string, init: RequestInit = {}) {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail || body);
     } catch {
       // not JSON — keep statusText
     }
+    if (res.status === 403 && detail.startsWith("password change required")) goToPasswordChange();
     throw new ApiError(res.status, detail);
   }
   const contentType = res.headers.get("content-type") || "";
@@ -66,6 +121,12 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   me: () => request("/auth/me"),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request("/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    }),
 
   listCases: () => request("/cases"),
   getCase: (caseId: string) => request(`/cases/${caseId}`),
@@ -79,33 +140,15 @@ export const api = {
   listEvidence: (caseId: string) => request(`/cases/${caseId}/evidence`),
   // Evidence files require the bearer token, so <img src> can't load them
   // directly — fetch as a blob and hand back an object URL instead.
-  evidenceFileUrl: async (caseId: string, evidenceId: string) => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/evidence/${evidenceId}/file`, { headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) throw new ApiError(res.status, res.statusText);
-    return URL.createObjectURL(await res.blob());
-  },
+  // Evidence files require the bearer token, so <img src> can't load them
+  // directly — fetch as a blob and hand back an object URL instead.
+  evidenceFileUrl: async (caseId: string, evidenceId: string) =>
+    URL.createObjectURL(await fetchBlob(`/cases/${caseId}/evidence/${evidenceId}/file`)),
   uploadEvidence: async (caseId: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/evidence`, { method: "POST", body: form, headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(res.status, body.detail || res.statusText);
-    }
+    const res = await fetch(`${API}/cases/${caseId}/evidence`, { method: "POST", body: form, headers: authHeaders() });
+    if (!res.ok) await failFrom(res);
     return res.json();
   },
 
@@ -130,29 +173,8 @@ export const api = {
   getConflictReviews: (caseId: string, conflictId: string) =>
     request(`/cases/${caseId}/conflicts/${conflictId}/reviews`),
 
-  downloadEvidenceCertificate: async (caseId: string, evidenceId: string) => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/evidence/${evidenceId}/certificate`, { headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(res.status, body.detail || res.statusText);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Draft_Certificate_${evidenceId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  },
+  downloadEvidenceCertificate: (caseId: string, evidenceId: string) =>
+    downloadFile(`/cases/${caseId}/evidence/${evidenceId}/certificate`, `Draft_Certificate_${evidenceId}.pdf`),
 
   getEntities: (caseId: string) => request(`/cases/${caseId}/entities`),
   resolveEntities: (caseId: string) => request(`/cases/${caseId}/entities/resolve`, { method: "POST" }),
@@ -176,29 +198,7 @@ export const api = {
     }),
 
   getReport: (caseId: string) => request(`/cases/${caseId}/report`),
-  downloadReportPdf: async (caseId: string) => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/report/pdf`, { headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(res.status, body.detail || res.statusText);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `CaseWeave_Report_${caseId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  },
+  downloadReportPdf: (caseId: string) => downloadFile(`/cases/${caseId}/report/pdf`, `CaseWeave_Report_${caseId}.pdf`),
 
   getPatterns: (caseId: string) => request(`/cases/${caseId}/patterns`),
   extractPatterns: (caseId: string) => request(`/cases/${caseId}/patterns/extract`, { method: "POST" }),
@@ -246,65 +246,11 @@ export const api = {
     }),
   startSandboxReview: (caseId: string) => request(`/cases/${caseId}/sandbox/review`, { method: "POST" }),
   getSandboxReview: (caseId: string) => request(`/cases/${caseId}/sandbox/review`),
-  reviewFrameUrl: async (caseId: string, reviewId: string, name: string) => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/sandbox/review/${reviewId}/frames/${name}`, { headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) throw new ApiError(res.status, res.statusText);
-    return URL.createObjectURL(await res.blob());
-  },
+  reviewFrameUrl: async (caseId: string, reviewId: string, name: string) =>
+    URL.createObjectURL(await fetchBlob(`/cases/${caseId}/sandbox/review/${reviewId}/frames/${name}`)),
   createPhotoLinks: (caseId: string) => request(`/cases/${caseId}/sandbox/photo-links`, { method: "POST" }),
   getPhotoLinks: (caseId: string) => request(`/cases/${caseId}/sandbox/photo-links`),
   getNarrative: (caseId: string) => request(`/cases/${caseId}/narrative`),
-  downloadSandboxPdf: async (caseId: string) => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/sandbox/export.pdf`, { headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(res.status, body.detail || res.statusText);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `CaseWeave_Scene_Review_${caseId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  },
-  downloadSandboxPack: async (caseId: string) => {
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API}/cases/${caseId}/sandbox/export`, { headers });
-    if (res.status === 401) {
-      handleUnauthorized();
-      throw new ApiError(401, "session expired — redirecting to login");
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(res.status, body.detail || res.statusText);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `CaseWeave_Scene_Review_Pack_${caseId}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  },
+  downloadSandboxPdf: (caseId: string) => downloadFile(`/cases/${caseId}/sandbox/export.pdf`, `CaseWeave_Scene_Review_${caseId}.pdf`),
+  downloadSandboxPack: (caseId: string) => downloadFile(`/cases/${caseId}/sandbox/export`, `CaseWeave_Scene_Review_Pack_${caseId}.json`),
 };

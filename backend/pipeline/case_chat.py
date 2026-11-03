@@ -4,12 +4,18 @@ this indexes the CASE's own observations (not the legal corpus) in their own
 per-case Chroma collection, then answers investigator questions grounded
 only in retrieved case evidence. Reuses legal.py's embedding model singleton
 instead of loading MiniLM twice.
+
+Identifiers are redacted before the question and retrieved text are sent to a model, and the answer is
+restored locally (see llm_guard). The index is refreshed in place (new rows upserted, rows for observations
+that no longer exist removed) so a chat asked while a re-index runs never sees an empty collection.
 """
 import chromadb
 
 from pipeline.legal import _get_model, CHROMA_DIR
+from pipeline.evidence_guard import screen_text
+from pipeline.llm_guard import case_redactor, safe_chat
 from db import get_conn
-from llm_client import chat, LLMUnavailableError
+from llm_client import LLMUnavailableError
 
 _client = None
 
@@ -33,18 +39,14 @@ def _get_client():
     return _client
 
 
+def collection_name(case_id: str) -> str:
+    return f"case_evidence_{case_id}"
+
+
 def index_case_evidence(case_id: str):
     model = _get_model()
     client = _get_client()
-    name = f"case_evidence_{case_id}"
-    # Rebuild from scratch: a pipeline re-run replaces every observation with
-    # new IDs, so upserting alone would leave the old (deleted) observations
-    # retrievable and citable by the chat.
-    try:
-        client.delete_collection(name)
-    except Exception:
-        pass  # didn't exist yet
-    collection = client.get_or_create_collection(name, metadata={"hnsw:space": "cosine"})
+    collection = client.get_or_create_collection(collection_name(case_id), metadata={"hnsw:space": "cosine"})
 
     conn = get_conn()
     rows = conn.execute(
@@ -52,6 +54,14 @@ def index_case_evidence(case_id: str):
         (case_id,),
     ).fetchall()
     conn.close()
+
+    # A pipeline re-run replaces every observation with new IDs, so rows for observations that no longer exist
+    # must go, or the chat could still cite them.
+    current = {r["observation_id"] for r in rows}
+    existing = set(collection.get(include=[])["ids"])
+    stale = sorted(existing - current)
+    if stale:
+        collection.delete(ids=stale)
 
     if not rows:
         return 0
@@ -61,8 +71,8 @@ def index_case_evidence(case_id: str):
     embeddings = model.encode(texts, convert_to_numpy=True).tolist()
     metadatas = [
         {
-            "source_evidence_id": r["source_evidence_id"],
-            "classification": r["classification"],
+            "source_evidence_id": r["source_evidence_id"] or "",
+            "classification": r["classification"] or "unknown",
             "extracted_time": r["extracted_time"] or "",
         }
         for r in rows
@@ -72,18 +82,21 @@ def index_case_evidence(case_id: str):
     return len(rows)
 
 
+def drop_case_index(case_id: str) -> None:
+    try:
+        _get_client().delete_collection(collection_name(case_id))
+    except Exception:  # noqa: BLE001 - never indexed, or already gone
+        pass
+
+
 def ask_case(case_id: str, question: str, history: list[dict] | None = None, top_k: int = 5):
     model = _get_model()
     client = _get_client()
-    collection = client.get_or_create_collection(
-        f"case_evidence_{case_id}", metadata={"hnsw:space": "cosine"}
-    )
+    collection = client.get_or_create_collection(collection_name(case_id), metadata={"hnsw:space": "cosine"})
 
     if collection.count() == 0:
         index_case_evidence(case_id)
-        collection = client.get_or_create_collection(
-            f"case_evidence_{case_id}", metadata={"hnsw:space": "cosine"}
-        )
+        collection = client.get_or_create_collection(collection_name(case_id), metadata={"hnsw:space": "cosine"})
 
     if collection.count() == 0:
         return {"answer": "No evidence has been processed for this case yet.", "sources": []}
@@ -98,7 +111,7 @@ def ask_case(case_id: str, question: str, history: list[dict] | None = None, top
         retrieved.append({"observation_id": doc_id, "text": document, **metadata})
 
     context = "\n".join(
-        f"- [{r['observation_id']}] ({r['source_evidence_id']}, time={r['extracted_time']}): {r['text']}"
+        f"- [{r['observation_id']}] ({r['source_evidence_id']}, time={r['extracted_time']}): {screen_text(r['text'])[0]}"
         for r in retrieved
     )
     history_text = ""
@@ -109,7 +122,7 @@ def ask_case(case_id: str, question: str, history: list[dict] | None = None, top
     prompt = f"{history_text}Question: {question}\n\nRetrieved case observations:\n{context}"
 
     try:
-        provider, answer = chat(ANSWER_SYSTEM_PROMPT, prompt, max_tokens=512)
+        provider, answer = safe_chat(case_id, ANSWER_SYSTEM_PROMPT, prompt, max_tokens=1024, redactor=case_redactor(case_id))
     except LLMUnavailableError as e:
         raise LLMUnavailableError(f"Case chat answer generation failed: {e}") from e
 

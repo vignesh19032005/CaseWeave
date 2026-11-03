@@ -14,14 +14,22 @@ directly on the connection (like sqlite3 did) and dict-style row access
 pipeline/*.py) needed ZERO changes — same interface, different engine
 underneath.
 """
+import datetime as _dt
 import hashlib
+import hmac
 import json
+import os
 import re
 
 import pymysql
 import pymysql.cursors
 
-from secrets_store import get_secret
+from secrets_store import get_or_create_secret, get_secret
+
+
+def utcnow() -> _dt.datetime:
+    """Naive UTC "now" (the format every timestamp column already uses) without the deprecated utcnow()."""
+    return _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
 
 
 def _mysql_config() -> dict:
@@ -97,7 +105,8 @@ SCHEMA_STATEMENTS = [
         username VARCHAR(128) UNIQUE,
         password_hash VARCHAR(128),
         role VARCHAR(32),
-        created_at VARCHAR(64)
+        created_at VARCHAR(64),
+        must_change_password TINYINT NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS timeline_events (
         event_id VARCHAR(64) PRIMARY KEY,
@@ -154,8 +163,17 @@ SCHEMA_STATEMENTS = [
         timestamp VARCHAR(64),
         prev_hash VARCHAR(128),
         this_hash VARCHAR(128),
+        actor_user VARCHAR(128) NULL,
+        hash_version INT NOT NULL DEFAULT 1,
         INDEX (case_id),
-        INDEX (timestamp)
+        INDEX (timestamp),
+        INDEX idx_audit_case_ts (case_id, timestamp)
+    )""",
+    """CREATE TABLE IF NOT EXISTS audit_heads (
+        case_id VARCHAR(64) PRIMARY KEY,
+        head_hash VARCHAR(128) NOT NULL,
+        event_count INT NOT NULL,
+        updated_at VARCHAR(40)
     )""",
     """CREATE TABLE IF NOT EXISTS case_signatures (
         case_id VARCHAR(64) PRIMARY KEY,
@@ -256,12 +274,24 @@ SCHEMA_STATEMENTS = [
 
 def _translate_sql(sql: str) -> str:
     """Translates sqlite-isms to MySQL dialect so every call site elsewhere
-    in the codebase (api.py, auth.py, pipeline/*.py) keeps working
-    unchanged: '?' placeholders -> '%s', and 'INSERT OR REPLACE INTO' ->
+    in the codebase keeps working unchanged: '?' placeholders -> '%s' (only outside quoted
+    string literals, so a '?' inside text is left alone), and 'INSERT OR REPLACE INTO' ->
     MySQL's 'REPLACE INTO' (no 'OR' in MySQL's grammar)."""
     sql = re.sub(r"INSERT\s+OR\s+REPLACE\s+INTO", "REPLACE INTO", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"\?", "%s", sql)
-    return sql
+    out, quote = [], ""
+    for ch in sql:
+        if quote:
+            if ch == quote:
+                quote = ""
+            out.append(ch)
+        elif ch in ("'", '"', "`"):
+            quote = ch
+            out.append(ch)
+        elif ch == "?":
+            out.append("%s")
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 class _CursorWrapper:
@@ -292,6 +322,17 @@ class _ConnWrapper:
 
     def __init__(self, raw_conn):
         self._conn = raw_conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if exc_type is not None:
+                self._conn.rollback()
+        finally:
+            self._conn.close()
+        return False
 
     def execute(self, sql, params=()):
         cur = self._conn.cursor()
@@ -339,19 +380,69 @@ def _migration_001_retire_unversioned_sandbox_tables(conn):
             conn.execute(f"RENAME TABLE {old} TO legacy_{old}")
 
 
+def _column_exists(conn, table: str, column: str) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+        (table, column),
+    ).fetchone()
+    return bool(row and row["n"])
+
+
+def _index_exists(conn, table: str, index: str) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?",
+        (table, index),
+    ).fetchone()
+    return bool(row and row["n"])
+
+
+def _migration_002_users_must_change_password(conn):
+    if not _column_exists(conn, "users", "must_change_password"):
+        conn.execute("ALTER TABLE users ADD COLUMN must_change_password TINYINT NOT NULL DEFAULT 0")
+
+
+def _migration_003_audit_actor_and_version(conn):
+    if not _column_exists(conn, "audit_events", "actor_user"):
+        conn.execute("ALTER TABLE audit_events ADD COLUMN actor_user VARCHAR(128) NULL")
+    if not _column_exists(conn, "audit_events", "hash_version"):
+        conn.execute("ALTER TABLE audit_events ADD COLUMN hash_version INT NOT NULL DEFAULT 1")
+
+
+def _migration_004_audit_case_timestamp_index(conn):
+    if not _index_exists(conn, "audit_events", "idx_audit_case_ts"):
+        conn.execute("CREATE INDEX idx_audit_case_ts ON audit_events (case_id, timestamp)")
+
+
+def _migration_005_remove_seeded_fictional_cases(conn):
+    """An earlier version wrote four fictional reference "cases" (CW-HIST-01..04) into the real cases table, where they showed
+    up in every user's case list. They now live only in the pattern reference store, labelled synthetic. Only rows that still
+    carry the exact seeded titles are removed, so a real case that happens to reuse an id is never touched."""
+    seeded = {
+        "CW-HIST-01": "Kilpauk Care Pharmacy Night Break-in",
+        "CW-HIST-02": "Anna Nagar Apollo Pharmacy Rooftop Cut",
+        "CW-HIST-03": "T. Nagar Kalyan Jewellers Showroom Sledgehammer Heist",
+        "CW-HIST-04": "Vadapalani Diagnostic Center Storeroom Theft",
+    }
+    for case_id, title in seeded.items():
+        conn.execute("DELETE FROM cases WHERE case_id=? AND title=?", (case_id, title))
+
+
 MIGRATIONS = [
     ("001_retire_unversioned_sandbox_tables", _migration_001_retire_unversioned_sandbox_tables),
+    ("002_users_must_change_password", _migration_002_users_must_change_password),
+    ("003_audit_actor_and_version", _migration_003_audit_actor_and_version),
+    ("004_audit_case_timestamp_index", _migration_004_audit_case_timestamp_index),
+    ("005_remove_seeded_fictional_cases", _migration_005_remove_seeded_fictional_cases),
 ]
 
 
 def _run_migrations(conn):
-    import datetime
     applied = {r["name"] for r in conn.execute("SELECT name FROM schema_migrations").fetchall()}
     for name, fn in MIGRATIONS:
         if name in applied:
             continue
         fn(conn)
-        conn.execute("INSERT INTO schema_migrations VALUES (?,?)", (name, datetime.datetime.utcnow().isoformat()))
+        conn.execute("INSERT INTO schema_migrations VALUES (?,?)", (name, utcnow().isoformat()))
         conn.commit()
 
 
@@ -365,14 +456,22 @@ def init_db():
 
 
 def reset_db():
-    """Drops and recreates every table — used by tests, NOT for production
-    use (that's what Stage 18's retention/deletion policy is for)."""
+    """Drops and recreates every table. Test use only: it destroys users, cases and the audit trail, so it
+    refuses to run unless the caller sets CASEWEAVE_ALLOW_DB_RESET=1 AND the configured database is clearly a
+    test database (its name contains "test")."""
+    name = (get_secret("MYSQL_DATABASE") or "caseweave").lower()
+    if os.environ.get("CASEWEAVE_ALLOW_DB_RESET") != "1" or "test" not in name:
+        raise RuntimeError(
+            f"reset_db() refused: it deletes every case, user and audit record in database '{name}'. "
+            "It only runs against a database whose name contains 'test' and with CASEWEAVE_ALLOW_DB_RESET=1."
+        )
     conn = get_conn()
     conn.execute("SET FOREIGN_KEY_CHECKS=0")
     for table in [
         "cases", "evidence_items", "observations", "entities", "entity_mentions",
         "relationships", "users", "timeline_events", "conflicts", "evidence_links",
-        "conflict_reviews", "sandbox_scenarios", "sandbox_runs", "sandbox_photo_links", "sandbox_reviews", "case_narratives", "schema_migrations", "audit_events",
+        "conflict_reviews", "sandbox_scenarios", "sandbox_runs", "sandbox_photo_links", "sandbox_reviews",
+        "case_narratives", "case_signatures", "schema_migrations", "audit_events", "audit_heads",
     ]:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.execute("SET FOREIGN_KEY_CHECKS=1")
@@ -382,12 +481,64 @@ def reset_db():
 
 
 def file_hash(path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
-def append_audit_event(conn, case_id, actor_role, action, target):
-    import datetime
+# ----------------------------------------------------------------- audit trail ----
+# Each event is chained to the one before it. Version 1 rows (older installs) used a plain SHA-256 over
+# {prev_hash, action, target, timestamp}. Version 2 rows are an HMAC (keyed with a secret that is not stored in
+# the database) over EVERY field including case, role and user, so editing any of them, or recomputing the
+# chain without the key, is detected. audit_heads keeps the newest hash and the count per case, so deleting the
+# most recent events is detected too.
 
+AUDIT_V2 = 2
+
+
+def _audit_key() -> bytes:
+    return get_or_create_secret("AUDIT_HMAC_KEY").encode()
+
+
+def _v1_hash(prev_hash, action, target, timestamp) -> str:
+    payload = json.dumps({"prev_hash": prev_hash, "action": action, "target": target, "timestamp": timestamp}, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _v2_hash(case_id, actor_role, actor_user, action, target, timestamp, prev_hash) -> str:
+    payload = json.dumps(
+        {"v": AUDIT_V2, "case_id": case_id, "actor_role": actor_role, "actor_user": actor_user or "", "action": action,
+         "target": target, "timestamp": timestamp, "prev_hash": prev_hash},
+        sort_keys=True,
+    )
+    return hmac.new(_audit_key(), payload.encode(), hashlib.sha256).hexdigest()
+
+
+def _insert_audit(cur, case_id, actor_role, actor_user, action, target):
+    """Reads the chain head and inserts the next event. The caller holds the per-case lock."""
+    cur.execute("SELECT this_hash FROM audit_events WHERE case_id=? ORDER BY timestamp DESC LIMIT 1 FOR UPDATE", (case_id,))
+    row = cur.fetchone()
+    prev_hash = row["this_hash"] if row else "GENESIS"
+    timestamp = utcnow().isoformat(timespec="microseconds")
+    audit_id = f"audit_{case_id}_{timestamp}_{action}"[:255]
+    this_hash = _v2_hash(case_id, actor_role, actor_user, action, target, timestamp, prev_hash)
+    cur.execute(
+        "INSERT INTO audit_events (audit_id, case_id, actor_role, action, target, timestamp, prev_hash, this_hash, actor_user, hash_version) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (audit_id, case_id, actor_role, action, target, timestamp, prev_hash, this_hash, actor_user, AUDIT_V2),
+    )
+    cur.execute("SELECT COUNT(*) AS n FROM audit_events WHERE case_id=?", (case_id,))
+    count = cur.fetchone()["n"]
+    cur.execute(
+        "REPLACE INTO audit_heads (case_id, head_hash, event_count, updated_at) VALUES (?,?,?,?)",
+        (case_id, this_hash, count, timestamp),
+    )
+    return this_hash
+
+
+def append_audit_event(conn, case_id, actor_role, action, target, actor_user=None):
     cur = conn.cursor()
     # Serialize appends per case across processes (API + worker). Without
     # this, two concurrent writers read the same latest hash and both chain
@@ -398,32 +549,17 @@ def append_audit_event(conn, case_id, actor_role, action, target):
         raise RuntimeError(f"could not acquire audit lock for {case_id}")
     try:
         conn.commit()  # end any open snapshot so the read below sees the latest row
-        cur.execute(
-            "SELECT this_hash FROM audit_events WHERE case_id=? ORDER BY timestamp DESC LIMIT 1",
-            (case_id,),
-        )
-        row = cur.fetchone()
-        prev_hash = row["this_hash"] if row else "GENESIS"
-
-        timestamp = datetime.datetime.utcnow().isoformat(timespec="microseconds")
-        audit_id = f"audit_{case_id}_{timestamp}_{action}"[:255]
-        payload = json.dumps(
-            {"prev_hash": prev_hash, "action": action, "target": target, "timestamp": timestamp},
-            sort_keys=True,
-        )
-        this_hash = hashlib.sha256(payload.encode()).hexdigest()
-
-        cur.execute(
-            "INSERT INTO audit_events VALUES (?,?,?,?,?,?,?,?)",
-            (audit_id, case_id, actor_role, action, target, timestamp, prev_hash, this_hash),
-        )
+        this_hash = _insert_audit(cur, case_id, actor_role, actor_user, action, target)
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cur.execute("SELECT RELEASE_LOCK(?)", (lock_name,))
     return this_hash
 
 
-def append_audit_event_txn(conn, case_id, actor_role, action, target):
+def append_audit_event_txn(conn, case_id, actor_role, action, target, actor_user=None):
     """Appends an audit event inside the caller's open transaction.
 
     The event and the record it attests to are committed together or not at
@@ -431,8 +567,6 @@ def append_audit_event_txn(conn, case_id, actor_role, action, target):
     committed (or rolled back) and calls the returned release function, so no
     other writer can fork the hash chain in between. Returns (this_hash, release).
     """
-    import datetime
-
     cur = conn.cursor()
     lock_name = f"cw_audit_{case_id}"[:64]
     cur.execute("SELECT GET_LOCK(?, 10) AS got", (lock_name,))
@@ -443,45 +577,39 @@ def append_audit_event_txn(conn, case_id, actor_role, action, target):
         try:
             cur2 = conn.cursor()
             cur2.execute("SELECT RELEASE_LOCK(?)", (lock_name,))
-        except Exception:
+        except Exception:  # noqa: BLE001 - connection already closed
             pass
 
     try:
-        # locking read: sees the latest committed row even inside an older snapshot
-        cur.execute("SELECT this_hash FROM audit_events WHERE case_id=? ORDER BY timestamp DESC LIMIT 1 FOR UPDATE", (case_id,))
-        row = cur.fetchone()
-        prev_hash = row["this_hash"] if row else "GENESIS"
-        timestamp = datetime.datetime.utcnow().isoformat(timespec="microseconds")
-        audit_id = f"audit_{case_id}_{timestamp}_{action}"[:255]
-        payload = json.dumps({"prev_hash": prev_hash, "action": action, "target": target, "timestamp": timestamp}, sort_keys=True)
-        this_hash = hashlib.sha256(payload.encode()).hexdigest()
-        cur.execute("INSERT INTO audit_events VALUES (?,?,?,?,?,?,?,?)",
-                    (audit_id, case_id, actor_role, action, target, timestamp, prev_hash, this_hash))
+        this_hash = _insert_audit(cur, case_id, actor_role, actor_user, action, target)
     except Exception:
         release()
         raise
     return this_hash, release
 
 
-def verify_audit_chain(conn, case_id) -> bool:
+def verify_audit_chain_detail(conn, case_id) -> dict:
+    """{"ok": bool, "events": n, "reason": str}. Checks every link, every v2 HMAC and the stored head."""
     cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM audit_events WHERE case_id=? ORDER BY timestamp ASC", (case_id,)
-    )
+    cur.execute("SELECT * FROM audit_events WHERE case_id=? ORDER BY timestamp ASC", (case_id,))
     rows = cur.fetchall()
     prev = "GENESIS"
-    for row in rows:
-        payload = json.dumps(
-            {
-                "prev_hash": prev,
-                "action": row["action"],
-                "target": row["target"],
-                "timestamp": row["timestamp"],
-            },
-            sort_keys=True,
-        )
-        expected = hashlib.sha256(payload.encode()).hexdigest()
-        if expected != row["this_hash"]:
-            return False
+    for i, row in enumerate(rows):
+        if row["prev_hash"] != prev:
+            return {"ok": False, "events": len(rows), "reason": f"event {i + 1} does not follow the one before it"}
+        if int(row.get("hash_version") or 1) >= AUDIT_V2:
+            expected = _v2_hash(row["case_id"], row["actor_role"], row.get("actor_user"), row["action"], row["target"], row["timestamp"], prev)
+        else:
+            expected = _v1_hash(prev, row["action"], row["target"], row["timestamp"])
+        if not hmac.compare_digest(expected, row["this_hash"] or ""):
+            return {"ok": False, "events": len(rows), "reason": f"event {i + 1} ({row['action']}) was altered"}
         prev = row["this_hash"]
-    return True
+    cur.execute("SELECT head_hash, event_count FROM audit_heads WHERE case_id=?", (case_id,))
+    head = cur.fetchone()
+    if head and (head["head_hash"] != prev or int(head["event_count"]) != len(rows)):
+        return {"ok": False, "events": len(rows), "reason": "the newest audit events were removed or replaced"}
+    return {"ok": True, "events": len(rows), "reason": ""}
+
+
+def verify_audit_chain(conn, case_id) -> bool:
+    return verify_audit_chain_detail(conn, case_id)["ok"]

@@ -19,24 +19,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-_FONT = "Helvetica"
-_UNICODE = False
-
-
-def _setup_font() -> None:
-    global _FONT, _UNICODE
-    for name, path in (("CWSans", r"C:\Windows\Fonts\arial.ttf"), ("CWSans", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-                       ("CWSans", "/Library/Fonts/Arial.ttf")):
-        if os.path.exists(path):
-            try:
-                pdfmetrics.registerFont(TTFont(name, path))
-                _FONT, _UNICODE = name, True
-                return
-            except Exception:  # noqa: BLE001
-                continue
-
-
-_setup_font()
+from pipeline.pdf_fonts import FONT as _FONT, UNICODE as _UNICODE  # noqa: E402
 
 
 def _t(v: Any) -> str:

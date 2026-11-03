@@ -26,12 +26,20 @@ def _load_env():
     not plaintext .env. Falls back to an existing os.environ value if already
     set (e.g. by a deployment's real env vars), so this stays swappable for
     Stage 20's move to a real Vault/Secrets Manager on a shared server."""
+    # Only the language-model keys and settings are exported to the environment. The database password, the JWT
+    # and audit signing secrets and the Redis settings stay in the secret store: anything in os.environ is
+    # inherited by every child process.
+    private = {"JWT_SECRET", "AUDIT_HMAC_KEY", "MYSQL_PASSWORD", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_DATABASE",
+               "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD"}
     for key, value in load_all_secrets().items():
-        if value and key not in os.environ:
+        if value and key not in os.environ and key not in private:
             os.environ[key] = value
 
 
 _load_env()
+
+
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"  # the request below sends reasoning_effort, which only the gpt-oss models accept
 
 
 class LLMUnavailableError(RuntimeError):
@@ -47,20 +55,22 @@ def _post_json(url: str, headers: dict, payload: dict, timeout: int = 60, retrie
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            if e.code in (429, 503) and attempt < retries - 1:
+            if e.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
                 wait = 2 ** (attempt + 1)  # 2s, 4s, 8s — rate limit / transient overload backoff
                 time.sleep(wait)
                 continue
             raise
-        except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as e:
-            # Any connection-level failure (socket timeout, remote closed
-            # the connection, DNS/network blip) — distinct from an HTTP
-            # error response, but just as transient. Observed in practice:
-            # http.client.RemoteDisconnected right after a network/Docker
-            # restart, and a raw socket TimeoutError under load.
+        except TimeoutError:
+            # A read that already waited the full timeout is not retried for long calls: the provider is working on
+            # (and may bill for) the request, and a retry would double the wait and the cost.
+            if timeout >= 100 or attempt >= retries - 1:
+                raise
+            time.sleep(2 ** (attempt + 1))
+        except (urllib.error.URLError, ConnectionError, OSError):
+            # Connection-level failure (remote closed the connection, DNS/network blip): transient, and the
+            # request never reached the model, so it is safe to try again.
             if attempt < retries - 1:
-                wait = 2 ** (attempt + 1)
-                time.sleep(wait)
+                time.sleep(2 ** (attempt + 1))
                 continue
             raise
 
@@ -91,12 +101,12 @@ def _call_meta(system: str, prompt: str, max_tokens: int, timeout: int = 60) -> 
             for block in item.get("content", []):
                 if block.get("type") == "output_text":
                     return block["text"]
-    raise LLMUnavailableError(f"Meta API response had no message/output_text block: {result}")
+    raise LLMUnavailableError(f"Meta API response had no message/output_text block: {str(result)[:200]}")
 
 
 def _call_groq(system: str, prompt: str, max_tokens: int, timeout: int = 60) -> str:
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
-    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+    model = os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip()
     if not api_key:
         raise LLMUnavailableError("GROQ_API_KEY not set")
 
@@ -124,12 +134,12 @@ def _call_gemini(system: str, prompt: str, max_tokens: int, timeout: int = 60) -
     if not api_key:
         raise LLMUnavailableError("GOOGLE_API_KEY not set")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
         "contents": [{"parts": [{"text": f"{system}\n\n{prompt}"}]}],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
     }
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     result = _post_json(url, headers, payload, timeout=timeout)
     return result["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -184,7 +194,6 @@ def active_providers():
     return [(n, f) for n, f in _ALL_PROVIDERS if n in names]
 
 
-PROVIDERS = [(n, f) for n, f in _ALL_PROVIDERS if n in ("meta", "groq", "gemini")]  # kept for older callers; chat() uses active_providers()
 
 
 def _call_meta_vision(system: str, prompt: str, image_b64: str, mime_type: str, max_tokens: int) -> str:
@@ -214,7 +223,7 @@ def _call_meta_vision(system: str, prompt: str, image_b64: str, mime_type: str, 
             for block in item.get("content", []):
                 if block.get("type") == "output_text":
                     return block["text"]
-    raise LLMUnavailableError(f"Meta vision response had no message/output_text block: {result}")
+    raise LLMUnavailableError(f"Meta vision response had no message/output_text block: {str(result)[:200]}")
 
 
 def _call_groq_vision(system: str, prompt: str, image_b64: str, mime_type: str, max_tokens: int) -> str:
@@ -230,7 +239,7 @@ def _call_gemini_vision(system: str, prompt: str, image_b64: str, mime_type: str
     model = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash").strip()
     if not api_key:
         raise LLMUnavailableError("GOOGLE_API_KEY not set")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
         "contents": [{
             "parts": [
@@ -240,7 +249,7 @@ def _call_gemini_vision(system: str, prompt: str, image_b64: str, mime_type: str
         }],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
     }
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     result = _post_json(url, headers, payload, timeout=90)
     return result["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -252,6 +261,29 @@ VISION_PROVIDERS = [
 ]
 
 
+MAX_IMAGE_SIDE = 1600
+
+
+def _prepare_image(path):
+    """Bytes and mime type to send for a photograph. Large originals are scaled down (long side 1600 px, JPEG): a 12-megapixel
+    phone photo is slow and expensive to upload and adds nothing to a description. The stored original is never changed."""
+    import io
+
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            if max(im.size) <= MAX_IMAGE_SIDE and path.stat().st_size < 1_500_000:
+                return path.read_bytes(), ("image/png" if path.suffix.lower() == ".png" else "image/jpeg")
+            im = im.convert("RGB")
+            im.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=85)
+            return buf.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001 - if it cannot be re-encoded, send it as it is
+        return path.read_bytes(), ("image/png" if path.suffix.lower() == ".png" else "image/jpeg")
+
+
 def chat_vision(system: str, prompt: str, image_path, max_tokens: int = 2048) -> tuple[str, str]:
     """Same fallback chain as chat(), but sends an image alongside the text
     prompt. image_path: a Path to a .png/.jpg file. Used for Stage 2 when the
@@ -260,8 +292,8 @@ def chat_vision(system: str, prompt: str, image_path, max_tokens: int = 2048) ->
     from pathlib import Path as _Path
 
     path = _Path(image_path)
-    mime_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
-    image_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    data, mime_type = _prepare_image(path)
+    image_b64 = base64.b64encode(data).decode("ascii")
 
     errors = []
     allowed = {n for n, _ in active_providers()}
@@ -308,26 +340,6 @@ def chat_vision_multi(system: str, prompt: str, images: list, max_tokens: int = 
     raise LLMUnavailableError(f"Meta vision response had no message/output_text block: {str(result)[:200]}")
 
 
-def chat_vision_json(system: str, prompt: str, image_path, max_tokens: int = 2048) -> tuple[str, dict]:
-    provider, text = chat_vision(system, prompt, image_path, max_tokens)
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.strip("`")
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    cleaned = cleaned.strip()
-    try:
-        return provider, json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        if e.msg == "Extra data":
-            try:
-                value, _ = json.JSONDecoder().raw_decode(cleaned)
-                return provider, value
-            except json.JSONDecodeError:
-                pass
-        raise LLMUnavailableError(f"{provider} returned non-JSON output: {e}\nRaw: {text[:300]}")
-
-
 def chat(system: str, prompt: str, max_tokens: int = 2048, timeout: int | None = None) -> tuple[str, str]:
     """Returns (provider_name_used, response_text). Raises LLMUnavailableError if all fail."""
     errors = []
@@ -362,7 +374,7 @@ def model_id(provider: str) -> str:
     if provider == "meta":
         return "muse-wonder-1.0"
     if provider == "groq":
-        return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+        return os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip()
     if provider == "gemini":
         return os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash").strip()
     if provider == "local":

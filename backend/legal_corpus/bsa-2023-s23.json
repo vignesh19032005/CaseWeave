@@ -2,7 +2,7 @@
   "id": "BSA-2023-S23",
   "act": "Bharatiya Sakshya Adhiniyam, 2023",
   "section": "23",
-  "title": "BSA Section 23 \u2014 How Much of Information from Accused May be Proved",
+  "title": "BSA Section 23 — How Much of Information from Accused May be Proved",
   "topic": "Recovery of weapon/evidence pursuant to disclosure, Section 27 IEA successor",
   "type": "statute",
   "cognizable": null,
@@ -14,5 +14,8 @@
     "Discovery of a fact distinctly deposed to in consequence of information received",
     "Only that portion of information which relates distinctly to the fact discovered is admissible"
   ],
-  "text": "Provided that when any fact is deposed to as discovered in consequence of information received from a person accused of any offence, in the custody of a police officer, so much of such information, whether it amounts to a confession or not, as relates distinctly thereby to the fact thereby discovered, may be proved. Governs admissibility of recovered crowbars, stolen cash, or drugs recovered based on accused disclosure statements."
+  "text": "Provided that when any fact is deposed to as discovered in consequence of information received from a person accused of any offence, in the custody of a police officer, so much of such information, whether it amounts to a confession or not, as relates distinctly thereby to the fact thereby discovered, may be proved.",
+  "practice_note": "Governs admissibility of recovered crowbars, stolen cash, or drugs recovered based on accused disclosure statements.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# production-build check output
+/.next-buildcheck/
+
+# browser e2e output
+/e2e/out/
+/.next-baseline/
+/.next-after/

@@ -2,7 +2,7 @@
   "id": "BNS-2023-S304",
   "act": "Bharatiya Nyaya Sanhita, 2023",
   "section": "304",
-  "title": "BNS Section 304 \u2014 Snatching",
+  "title": "BNS Section 304 — Snatching",
   "topic": "Snatching of property, sudden quick seizure",
   "type": "statute",
   "cognizable": true,
@@ -13,5 +13,8 @@
     "Theft committed by suddenly or quickly grabbing or seizing property",
     "Property carried away from person or custody of another"
   ],
-  "text": "Theft is snatching if, in order to commit theft, the offender suddenly or quickly or forcibly seizes, secures, grabs or takes away from any person or from his possession any movable property. This new provision in BNS codifies mobile and chain snatching as a distinct aggravated offence."
+  "text": "Theft is snatching if, in order to commit theft, the offender suddenly or quickly or forcibly seizes, secures, grabs or takes away from any person or from his possession any movable property.",
+  "practice_note": "This new provision in BNS codifies mobile and chain snatching as a distinct aggravated offence.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

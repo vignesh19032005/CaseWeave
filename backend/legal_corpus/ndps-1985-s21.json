@@ -2,7 +2,7 @@
   "id": "NDPS-1985-S21",
   "act": "Narcotic Drugs and Psychotropic Substances Act, 1985",
   "section": "21",
-  "title": "NDPS Act Section 21 \u2014 Punishment for Contravention in Relation to Manufactured Drugs",
+  "title": "NDPS Act Section 21 — Punishment for Contravention in Relation to Manufactured Drugs",
   "topic": "Manufactured narcotics, psychotropics, intermediate quantity, commercial quantity",
   "type": "statute",
   "cognizable": true,
@@ -14,5 +14,7 @@
     "Absence of lawful license or authority under the Act or Drugs and Cosmetics Act",
     "Weight verification to classify Small, Intermediate, or Commercial quantity"
   ],
-  "text": "Whoever, in contravention of any provision of this Act or any rule or order made or condition of licence granted thereunder, manufactures, possesses, sells, purchases, transports, imports inter-State, exports inter-State or uses any manufactured drug or any preparation containing any manufactured drug shall be punishable with rigorous imprisonment and fine graded strictly according to quantity."
+  "text": "Whoever, in contravention of any provision of this Act or any rule or order made or condition of licence granted thereunder, manufactures, possesses, sells, purchases, transports, imports inter-State, exports inter-State or uses any manufactured drug or any preparation containing any manufactured drug shall be punishable with rigorous imprisonment and fine graded strictly according to quantity.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

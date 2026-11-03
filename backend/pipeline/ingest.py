@@ -13,7 +13,7 @@ def ingest_case(case_id: str, title: str, data_dir: Path):
 
     cur.execute(
         "INSERT OR REPLACE INTO cases VALUES (?,?,?)",
-        (case_id, title, datetime.datetime.utcnow().isoformat()),
+        (case_id, title, datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat()),
     )
     conn.commit()
     append_audit_event(conn, case_id, "system", "case_created", case_id)

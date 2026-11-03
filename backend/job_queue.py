@@ -3,45 +3,108 @@ Stage 20 (second half) — async job queue. Moves the LLM-heavy pipeline work
 (Stages 2-10) off the request thread: /process now enqueues a job and
 returns immediately with a job_id; a separate `rq worker` process does the
 actual work; the client polls /cases/{id}/process/status/{job_id} for
-progress/result. This is what makes /process not block for however long
-the LLM provider chain takes — previously a slow Gemini fallback could hold
-an HTTP request open for a minute-plus.
+progress/result.
 
-Connects to the isolated caseweave-redis container (port 6381) — separate
-from this machine's other Redis instances used by unrelated projects.
+Safety notes:
+- Jobs are serialized as JSON, never pickle. A job description read from Redis can therefore never make
+  the worker execute arbitrary objects, even if someone can write to Redis.
+- Redis may require a password (REDIS_PASSWORD).
+- Only one processing job per case may be queued or running at a time (a Redis key with a time limit), so two
+  runs cannot delete each other's rows halfway through.
+- A job belongs to the case it was started for; asking for its status through another case's URL finds nothing.
 """
+import json
+import logging
+import tempfile
 from pathlib import Path
 
 import redis
 from rq import Queue
 from rq.job import Job
+from rq.serializers import JSONSerializer
 
 from secrets_store import get_secret
+
+logger = logging.getLogger("caseweave.jobs")
+
+QUEUE_NAME = "caseweave-process"
+JOB_TIMEOUT_S = 3600
+CASE_LOCK_TTL_S = JOB_TIMEOUT_S + 600
+REPORT_DATA_DIR = Path(__file__).parent / "report_data"
+
+
+class CaseBusy(RuntimeError):
+    """Another processing job for this case is already queued or running."""
 
 
 def get_redis_connection():
     host = get_secret("REDIS_HOST") or "127.0.0.1"
     port = int(get_secret("REDIS_PORT") or 6381)
-    return redis.Redis(host=host, port=port)
+    password = get_secret("REDIS_PASSWORD") or None
+    return redis.Redis(host=host, port=port, password=password)
 
 
 def get_queue() -> Queue:
-    return Queue("caseweave-process", connection=get_redis_connection())
+    return Queue(QUEUE_NAME, connection=get_redis_connection(), serializer=JSONSerializer)
 
 
-def get_job_status(job_id: str) -> dict:
+def _lock_key(case_id: str) -> str:
+    return f"cw:case-job:{case_id}"
+
+
+def enqueue_process(case_id: str, legal_query: str | None) -> str:
+    """Queues a processing job for the case and returns its id. Raises CaseBusy if one is already active."""
+    conn = get_redis_connection()
+    if not conn.set(_lock_key(case_id), "pending", nx=True, ex=CASE_LOCK_TTL_S):
+        raise CaseBusy("This case is already being processed. Wait for it to finish.")
+    try:
+        job = get_queue().enqueue(run_process_job, case_id, legal_query, job_timeout=JOB_TIMEOUT_S, meta={"case_id": case_id},
+                                  result_ttl=86400, failure_ttl=86400)
+        conn.set(_lock_key(case_id), job.id, xx=True, ex=CASE_LOCK_TTL_S)
+        return job.id
+    except Exception:
+        conn.delete(_lock_key(case_id))
+        raise
+
+
+def active_job_for_case(case_id: str) -> str | None:
+    value = get_redis_connection().get(_lock_key(case_id))
+    return value.decode() if value else None
+
+
+def release_case(case_id: str) -> None:
+    try:
+        get_redis_connection().delete(_lock_key(case_id))
+    except Exception:  # noqa: BLE001 - the key expires on its own
+        pass
+
+
+def get_job_status(job_id: str, case_id: str) -> dict:
     conn = get_redis_connection()
     try:
-        job = Job.fetch(job_id, connection=conn)
-    except Exception:
+        job = Job.fetch(job_id, connection=conn, serializer=JSONSerializer)
+    except Exception:  # noqa: BLE001 - unknown or expired
         return {"status": "not_found"}
+    if (job.meta or {}).get("case_id") != case_id:
+        return {"status": "not_found"}  # a job id from another case is not revealed
 
     result = {"job_id": job_id, "status": job.get_status()}
     if job.is_finished:
         result["result"] = job.result
     elif job.is_failed:
-        result["error"] = str(job.exc_info)[-2000:] if job.exc_info else "unknown error"
+        # the full traceback stays on the server; the user gets the reason in one line
+        logger.error("job %s failed: %s", job_id, (job.exc_info or "")[-2000:])
+        last = (job.exc_info or "").strip().splitlines()[-1:] or ["unknown error"]
+        result["error"] = last[0][:300]
     return result
+
+
+def _save_report_data(case_id: str, scenarios, legal_results, reconstruction) -> None:
+    """What the report needs that is not stored in the database, so a report can be rebuilt later (for example
+    after a reviewer confirms a conflict) without calling any model again."""
+    REPORT_DATA_DIR.mkdir(exist_ok=True)
+    (REPORT_DATA_DIR / f"{case_id}.json").write_text(
+        json.dumps({"scenarios": scenarios, "legal_results": legal_results, "reconstruction": reconstruction}, default=str), encoding="utf-8")
 
 
 def run_process_job(case_id: str, legal_query: str | None):
@@ -51,46 +114,49 @@ def run_process_job(case_id: str, legal_query: str | None):
     a module path + args, not a closure — the function needs to live in an
     importable module, not be defined inline inside a FastAPI route).
     """
-    from pathlib import Path as _Path
+    try:
+        return _run_process_job(case_id, legal_query)
+    finally:
+        release_case(case_id)
 
-    from db import get_conn
-    from storage import get_object_path
+
+def _run_process_job(case_id: str, legal_query: str | None):
+    from db import get_conn, append_audit_event
+    from storage import require_intact, IntegrityError
     from pipeline.observe import run_observation_engine
     from pipeline.timeline import build_timeline
     from pipeline.discrepancy import detect_discrepancies
     from pipeline.legal import search_legal_corpus
     from pipeline.scenarios import generate_scenarios
-    from pipeline.report import generate_report
-    from pipeline.report_pdf import generate_report_pdf
-    from pipeline.timeline_html import render_timeline_html
     from pipeline.case_chat import index_case_evidence
     from pipeline.entities import resolve_entities
     from pipeline.incident_reconstruction import reconstruct_incident
+    from pipeline.report_refresh import refresh_reports
+    from pipeline.extract import evidence_to_text
     import backup as backup_module
+    import shutil
 
-    conn = get_conn()
-    case = conn.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()
-    if not case:
-        conn.close()
-        raise ValueError(f"case not found: {case_id}")
-    rows = conn.execute("SELECT * FROM evidence_items WHERE case_id=?", (case_id,)).fetchall()
-    conn.close()
+    with get_conn() as conn:
+        case = conn.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()
+        if not case:
+            raise ValueError(f"case not found: {case_id}")
+        rows = conn.execute("SELECT * FROM evidence_items WHERE case_id=?", (case_id,)).fetchall()
 
     # Stage 1: turn every evidence file (text, logs, PDFs, image OCR, audio,
     # video) into text for the observation engine. A file that fails to
     # extract is skipped and audited, not allowed to fail the whole run.
-    import tempfile
-    from db import append_audit_event
-    from pipeline.extract import evidence_to_text
-
+    # A file whose bytes no longer match the hash recorded at upload is NOT processed at all.
     evidence_items = []
     extraction_report = []
-    work_root = _Path(tempfile.mkdtemp(prefix=f"cw_extract_{case_id}_"))
+    work_root = Path(tempfile.mkdtemp(prefix=f"cw_extract_{case_id}_"))
     for r in rows:
-        path = get_object_path(case_id, r["evidence_id"], r["filename"])
         try:
+            path = require_intact(case_id, r["evidence_id"], r["filename"], r["file_hash"])
             text, method = evidence_to_text(path, r["evidence_type"], work_root)
-        except Exception as e:
+        except IntegrityError as e:
+            text, method = None, "integrity_failure"
+            logger.error("evidence integrity failure in %s: %s", case_id, e)
+        except Exception as e:  # noqa: BLE001 - one bad file must not stop the run
             text, method = None, f"failed: {str(e)[:200]}"
         extraction_report.append({"evidence_id": r["evidence_id"], "filename": r["filename"], "method": method,
                                   "extracted": text is not None})
@@ -99,14 +165,12 @@ def run_process_job(case_id: str, legal_query: str | None):
         evidence_items.append({"evidence_id": r["evidence_id"], "path": path,
                                "evidence_type": r["evidence_type"], "content": text})
 
-    import shutil
     shutil.rmtree(work_root, ignore_errors=True)  # extracted frames/audio are intermediates, not evidence
 
-    log_conn = get_conn()
-    for rep in extraction_report:
-        action = f"extracted_{rep['method']}" if rep["extracted"] else f"extraction_skipped_{rep['method']}"
-        append_audit_event(log_conn, case_id, "system", action[:128], rep["evidence_id"])
-    log_conn.close()
+    with get_conn() as log_conn:
+        for rep in extraction_report:
+            action = f"extracted_{rep['method']}" if rep["extracted"] else f"extraction_skipped_{rep['method']}"
+            append_audit_event(log_conn, case_id, "system", action[:128], rep["evidence_id"])
 
     if not evidence_items:
         raise ValueError("no evidence with extractable content yet")
@@ -121,7 +185,7 @@ def run_process_job(case_id: str, legal_query: str | None):
     # entity" fact — same ordering as the CLI run_pipeline.py.
     entity_result = resolve_entities(case_id)
     conflicts, evidence_links = detect_discrepancies(case_id, timeline_events)
-    scenarios = generate_scenarios(conflicts)
+    scenarios = generate_scenarios(conflicts, case_id=case_id)
     legal_results = search_legal_corpus(legal_query) if legal_query else []
     index_case_evidence(case_id)
 
@@ -130,23 +194,19 @@ def run_process_job(case_id: str, legal_query: str | None):
             case_id, timeline_events, entity_result["entities"], entity_result["relationships"],
             conflicts, evidence_links,
         )
-    except Exception:
-        reconstruction = None  # non-fatal: Stage 9a is additive, not required for a usable report
+    except Exception:  # noqa: BLE001 - Stage 9a is additive, not required for a usable report
+        logger.exception("incident reconstruction failed for %s", case_id)
+        reconstruction = None
 
-    backend_dir = _Path(__file__).parent
-    report_path = backend_dir / f"output_report_{case_id}.md"
-    generate_report(case_id, timeline_events, conflicts, scenarios, legal_results, report_path, reconstruction)
-
-    pdf_path = backend_dir / f"output_report_{case_id}.pdf"
-    generate_report_pdf(case_id, timeline_events, conflicts, scenarios, legal_results, pdf_path, reconstruction)
-
-    html_path = backend_dir / f"timeline_{case_id}.html"
-    render_timeline_html(case_id, case["title"], timeline_events, conflicts, html_path)
+    _save_report_data(case_id, scenarios, legal_results, reconstruction)
+    paths = refresh_reports(case_id)
 
     try:
-        backup_module.run_backup()
-    except Exception:
-        pass  # backup failure shouldn't fail the whole processing job
+        summary = backup_module.run_backup()
+        if summary.get("errors"):
+            logger.error("backup finished with errors: %s", summary["errors"])
+    except Exception:  # noqa: BLE001 - a backup failure must not fail processing, but it must not be silent either
+        logger.exception("backup failed after processing %s", case_id)
 
     return {
         "observations_count": len(observations),
@@ -159,7 +219,7 @@ def run_process_job(case_id: str, legal_query: str | None):
         "scenarios": scenarios,
         "legal_results": legal_results,
         "reconstruction": reconstruction,
-        "report_path": str(report_path),
-        "pdf_report_path": str(pdf_path),
-        "timeline_html_path": str(html_path),
+        "report_path": paths["markdown"],
+        "pdf_report_path": paths["pdf"],
+        "timeline_html_path": paths["timeline_html"],
     }

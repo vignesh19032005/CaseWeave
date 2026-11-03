@@ -14,11 +14,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from rq import SimpleWorker, Queue
-from job_queue import get_redis_connection
+from rq.serializers import JSONSerializer
+from job_queue import get_redis_connection, QUEUE_NAME
 
 if __name__ == "__main__":
     conn = get_redis_connection()
-    queue = Queue("caseweave-process", connection=conn)
-    worker = SimpleWorker([queue], connection=conn)
+    queue = Queue(QUEUE_NAME, connection=conn, serializer=JSONSerializer)
+    worker = SimpleWorker([queue], connection=conn, serializer=JSONSerializer)
     print("RQ worker started, listening on queue 'caseweave-process'...")
     worker.work()

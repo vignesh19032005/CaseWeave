@@ -2,7 +2,7 @@
   "id": "BNS-2023-S112",
   "act": "Bharatiya Nyaya Sanhita, 2023",
   "section": "112",
-  "title": "BNS Section 112 \u2014 Petty Organised Crime",
+  "title": "BNS Section 112 — Petty Organised Crime",
   "topic": "Theft, snatching, cheating by gang or organized syndicate",
   "type": "statute",
   "cognizable": true,
@@ -13,5 +13,7 @@
     "Offence committed by member of a group or gang",
     "Includes theft, snatching, cheating, ticket unauthorized sale, betting, or automated teller fraud"
   ],
-  "text": "Whoever, being a member of a group or gang, either singly or jointly, commits any act of theft, snatching, cheating, unauthorized sale of tickets, unauthorized betting or gambling, or automated teller machine fraud, shall be punished with imprisonment for a term which shall not be less than one year but which may extend to seven years, and fine."
+  "text": "Whoever, being a member of a group or gang, either singly or jointly, commits any act of theft, snatching, cheating, unauthorized sale of tickets, unauthorized betting or gambling, or automated teller machine fraud, shall be punished with imprisonment for a term which shall not be less than one year but which may extend to seven years, and fine.",
+  "verification_status": "paraphrase_unverified",
+  "text_kind": "summary_not_official_text"
 }

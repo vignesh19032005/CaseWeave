@@ -14,7 +14,8 @@ def render_timeline_html(case_id: str, title: str, timeline_events: list, confli
     rows = []
     for e in timeline_events:
         is_conflict = (e["source_evidence_id"], e["time"]) in conflict_event_pairs
-        badge_class = "badge-conflict" if is_conflict else f"badge-{e['classification']}"
+        cls = e['classification'] if e['classification'] in ("observed", "reported", "inferred", "disputed", "unknown") else "unknown"
+        badge_class = "badge-conflict" if is_conflict else f"badge-{cls}"
         rows.append(f"""
         <div class="event{' event-conflict' if is_conflict else ''}" data-source="{html.escape(e['source_evidence_id'])}">
           <div class="event-time">{html.escape(e['time'] or '')}</div>

@@ -17,7 +17,8 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, PageBreak,
 )
 
-from db import get_conn, verify_audit_chain
+from db import get_conn, verify_audit_chain, verify_audit_chain_detail
+from pipeline.pdf_fonts import FONT, FONT_BOLD, fit
 
 NAVY = colors.HexColor("#1e3a5f")
 AMBER = colors.HexColor("#92620a")
@@ -27,6 +28,8 @@ GREY = colors.HexColor("#52525b")
 LIGHT_GREY = colors.HexColor("#f4f4f5")
 
 _styles = getSampleStyleSheet()
+for _name in ("Title", "Normal", "Heading2", "Heading3"):
+    _styles[_name].fontName = FONT_BOLD if _name != "Normal" else FONT
 _styles.add(ParagraphStyle("CWTitle", parent=_styles["Title"], textColor=NAVY, fontSize=18, leading=22, spaceAfter=4))
 _styles.add(ParagraphStyle("CWMeta", parent=_styles["Normal"], textColor=GREY, fontSize=10, leading=14, spaceAfter=8))
 _styles.add(ParagraphStyle("CWH2", parent=_styles["Heading2"], textColor=NAVY, fontSize=12.5, leading=16, spaceBefore=16, spaceAfter=8,
@@ -37,7 +40,7 @@ _styles.add(ParagraphStyle("CWBody", parent=_styles["Normal"], fontSize=10, lead
 _styles.add(ParagraphStyle("CWSmall", parent=_styles["Normal"], fontSize=8.5, leading=12, textColor=GREY))
 _styles.add(ParagraphStyle("CWWarn", parent=_styles["Normal"], fontSize=9, leading=13, textColor=AMBER))
 _styles.add(ParagraphStyle("CWCell", parent=_styles["Normal"], fontSize=8.5, leading=11, alignment=TA_LEFT))
-_styles.add(ParagraphStyle("CWCellHeader", parent=_styles["Normal"], fontSize=9, leading=12, textColor=colors.white, fontName="Helvetica-Bold"))
+_styles.add(ParagraphStyle("CWCellHeader", parent=_styles["Normal"], fontSize=9, leading=12, textColor=colors.white, fontName=FONT_BOLD))
 
 
 def esc(text) -> str:
@@ -46,7 +49,7 @@ def esc(text) -> str:
     goes into _p()'s template must be wrapped in this — _p() itself does
     NOT escape, so the <b>/<br/> markup this module writes intentionally
     still renders instead of showing up as literal tags."""
-    return str(text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return fit(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _p(markup: str, style: str = "CWBody") -> Paragraph:
@@ -82,7 +85,7 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
 
     story.append(_p(f"CaseWeave Investigation Report", "CWTitle"))
     story.append(_p(f"{esc(case['title'])} &middot; {esc(case_id)}", "CWMeta"))
-    story.append(_p(f"Generated {datetime.datetime.utcnow().strftime('%d %b %Y, %H:%M UTC')}", "CWSmall"))
+    story.append(_p(f"Generated {datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime('%d %b %Y, %H:%M UTC')}", "CWSmall"))
     story.append(Spacer(1, 6))
     story.append(_section_rule())
 
@@ -172,7 +175,8 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
                 [[_p(f"<b>Claim A</b> ({esc(c['time_a'])}, {esc(c['source_a'])})<br/>{esc(c['claim_a'])}", "CWBody")],
                  [_p(f"<b>Claim B</b> ({esc(c['time_b'])}, {esc(c['source_b'])})<br/>{esc(c['claim_b'])}", "CWBody")],
                  [_p(f"<b>Nature of conflict:</b> {esc(c.get('nature_of_conflict', ''))}", "CWBody")],
-                 [_p(f"<b>Recommended next step:</b> {esc(c['question'])}", "CWWarn")]],
+                 [_p(f"<b>Recommended next step:</b> {esc(c['question'])}", "CWWarn")],
+                 [_p(f"<b>Review status:</b> {esc(c.get('review_status') or 'unresolved')}" + (f" — {esc(c['review_note'])}" if c.get('review_note') else ""), "CWBody")]],
                 colWidths=[180 * mm],
             )
             box.setStyle(TableStyle([
@@ -284,23 +288,19 @@ def generate_report_pdf(case_id: str, timeline_events, conflicts, scenarios, leg
     story.append(Spacer(1, 8))
 
     # --- 9. Disclosure ---
-    story.append(_p("9. Pilot Readiness & Statutory Disclaimers", "CWH2"))
+    story.append(_p("9. Notice on AI-assisted analysis & Statutory Disclaimers", "CWH2"))
     story.append(_p(
         "<b>Notice of Automated AI Extraction:</b> This case file was parsed and analyzed using CaseWeave's "
-        "multi-model pipeline (Meta, Groq, and Gemini fallback chains). Observations, timelines, and reconstructed "
+        "multi-model pipeline (Meta first; a local model, Groq or Gemini only if Meta could not answer; the audit log records which). Observations, timelines, and reconstructed "
         "narratives represent investigative hypotheses derived strictly from uploaded evidentiary records. "
         "<b>They do not constitute statutory conclusions of guilt, judicial findings, or formal police charges.</b> "
         "Every identified discrepancy and factual claim must be independently verified against original exhibits "
         "prior to submission before a magistrate or court of law.", "CWBody"))
     story.append(Spacer(1, 4))
     story.append(_p(
-        "<b>Pilot Readiness Status:</b> This document was generated in a pre-deployment pilot evaluation environment. "
-        "Chain of custody has been cryptographically preserved using SHA-256 evidence hashing and tamper-evident "
-        "block chaining. Production deployment requires formal legal sign-off under Section 63 Bharatiya Sakshya "
-        "Adhiniyam (BSA), 2023.", "CWSmall"))
-
-    doc.build(story)
-    return out_path
+        "<b>Integrity:</b> evidence originals are hashed with SHA-256 on upload and re-verified before they are processed or served; "
+        "every action is recorded in a keyed, hash-chained audit log. Use in proceedings still requires review by counsel and a "
+        "Section 63 Bharatiya Sakshya Adhiniyam, 2023 certificate for each electronic record.", "CWSmall"))
 
     doc.build(story)
     return out_path

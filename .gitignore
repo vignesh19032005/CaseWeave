@@ -57,3 +57,8 @@ frontend/*.tsbuildinfo
 *.swp
 *.swo
 
+backend/report_data/
+backend/.generated_secrets
+backend/.venv311/
+frontend/e2e/out/
+frontend/.next-buildcheck/

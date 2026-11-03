@@ -390,10 +390,22 @@ CORPUS_DATA = [
 
 
 def main():
+    import re
+    # Sentences that describe how a section applies to a particular kind of case are commentary, not statute text: they
+    # are kept in practice_note, and every entry is labelled as a summary that must be verified against the official text.
+    triggers = ("Applicable to", "Critical for", "This section directly applies", "This new provision in BNS", "Governs admissibility of recovered")
     count = 0
     for item in CORPUS_DATA:
+        item = dict(item)
+        sents = re.split(r"(?<=[.])\s+", item.get("text", ""))
+        notes = [x for x in sents if x.startswith(triggers)]
+        if notes:
+            item["text"] = " ".join(x for x in sents if x not in notes)
+            item["practice_note"] = " ".join(notes)
+        item.setdefault("verification_status", "paraphrase_unverified")
+        item.setdefault("text_kind", "summary_not_official_text")
         file_path = CORPUS_DIR / f"{item['id'].lower()}.json"
-        file_path.write_text(json.dumps(item, indent=2), encoding="utf-8")
+        file_path.write_text(json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
         count += 1
     print(f"Successfully generated {count} comprehensive legal corpus documents in {CORPUS_DIR}")
 

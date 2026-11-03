@@ -17,12 +17,18 @@ moves this onto a shared server — that needs a real Vault/Secrets Manager
 instead, since there's no single "logged-in user" on a server the same way.
 """
 import os
+import secrets as _secrets
+import threading
 from pathlib import Path
 
 import keyring
 
 SERVICE_NAME = "caseweave"
 ENV_FALLBACK_PATH = Path(__file__).parent / ".env"
+# Generated secrets that could not be put in the OS keyring (for example on a Linux server without a keyring
+# backend) are kept in this owner-only file instead, so the service still starts. It is git-ignored.
+GENERATED_PATH = Path(__file__).parent / ".generated_secrets"
+_gen_lock = threading.Lock()
 
 SECRET_KEYS = [
     "META_API_KEY",
@@ -33,6 +39,7 @@ SECRET_KEYS = [
     "GOOGLE_MODEL",
     "HUGGINGFACE_API_KEY",
     "JWT_SECRET",
+    "AUDIT_HMAC_KEY",
     "MYSQL_HOST",
     "MYSQL_PORT",
     "MYSQL_USER",
@@ -40,6 +47,7 @@ SECRET_KEYS = [
     "MYSQL_DATABASE",
     "REDIS_HOST",
     "REDIS_PORT",
+    "REDIS_PASSWORD",
 ]
 
 
@@ -70,17 +78,53 @@ def get_secret(key: str) -> str:
             return value
     except Exception:
         pass
-    return _read_env_file().get(key, "")
+    return _read_env_file().get(key, "") or _read_generated().get(key, "")
+
+
+def _read_generated() -> dict:
+    if not GENERATED_PATH.exists():
+        return {}
+    out = {}
+    for line in GENERATED_PATH.read_text(encoding="utf-8").splitlines():
+        k, _, v = line.partition("=")
+        if k.strip() and v.strip():
+            out[k.strip()] = v.strip()
+    return out
 
 
 def set_secret(key: str, value: str):
-    keyring.set_password(SERVICE_NAME, key, value)
+    """Stores a secret in the OS keyring; if no keyring backend exists, in an owner-only local file."""
+    try:
+        keyring.set_password(SERVICE_NAME, key, value)
+        return
+    except Exception:  # noqa: BLE001 - no usable keyring backend on this machine
+        pass
+    with _gen_lock:
+        current = _read_generated()
+        current[key] = value
+        fd = os.open(GENERATED_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("".join(f"{k}={v}" + chr(10) for k, v in current.items()))
+
+
+def get_or_create_secret(key: str, nbytes: int = 32) -> str:
+    """Returns the secret, generating and storing a random one the first time. Safe if two processes
+    start together: after generating, it re-reads, and the stored value wins."""
+    existing = get_secret(key)
+    if existing:
+        return existing
+    with _gen_lock:
+        existing = get_secret(key)
+        if existing:
+            return existing
+        set_secret(key, _secrets.token_hex(nbytes))
+    return get_secret(key)
 
 
 def delete_secret(key: str):
     try:
         keyring.delete_password(SERVICE_NAME, key)
-    except keyring.errors.PasswordDeleteError:
+    except Exception:  # noqa: BLE001 - missing entry or no keyring backend
         pass
 
 

@@ -30,10 +30,10 @@ async function runBrowserTest() {
 
     // 2. Perform Login
     if (page.url().includes('/login')) {
-      console.log('\n[2] Logging in as admin / changeme123 ...');
+      console.log('\n[2] Logging in as admin (password from CW_PASSWORD) ...');
       const inputs = page.locator('input');
       await inputs.nth(0).fill('admin');
-      await inputs.nth(1).fill('changeme123');
+      await inputs.nth(1).fill((process.env.CW_PASSWORD || (() => { throw new Error('Set CW_PASSWORD'); })()));
       await page.screenshot({ path: path.join(screenshotsDir, '01_credentials_entered.png') });
       
       await page.click('button[type="submit"]');

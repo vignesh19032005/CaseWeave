@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { api, getToken, ApiError } from "../../lib/api";
@@ -100,6 +100,95 @@ const LINK_COLORS: Record<string, string> = {
   related_to: "border-sky-700 text-sky-400",
 };
 
+
+type SegmentMatch = {
+  label?: string;
+  color?: string;
+  box?: { pct_left: number; pct_top: number; pct_width: number; pct_height: number };
+};
+type SegmentResult = { matches: SegmentMatch[]; detected_count?: number; failed_terms?: string[] };
+
+type PatternSignature = {
+  crime_category?: string;
+  point_of_entry?: string;
+  tools_used?: string;
+  target_goods?: string;
+  timing_window?: string;
+  mo_summary?: string;
+  signature_traits?: string[];
+};
+type SimilarCase = PatternSignature & {
+  case_id: string;
+  is_synthetic_reference?: boolean;
+  title?: string;
+  jurisdiction?: string;
+  fir_number?: string;
+  fir_date?: string;
+  similarity_percentage: number;
+};
+type PatternSynthesis = {
+  note?: string;
+  compared_with?: string;
+  verdict?: string;
+  matching_traits?: string[];
+  divergent_factors?: string[];
+  inter_station_leads?: string[];
+};
+type PatternsData = {
+  status?: "ok" | "unavailable";
+  reason?: string;
+  cached?: boolean;
+  active_signature?: PatternSignature;
+  similar_cases?: SimilarCase[];
+  comparative_synthesis?: PatternSynthesis | null;
+};
+
+type RecommendedSection = {
+  act?: string;
+  section?: string;
+  title?: string;
+  cognizable?: boolean;
+  bailable?: boolean;
+  punishment?: string;
+  triable_by?: string;
+  justification?: string;
+  statutory_ingredients_met?: string[];
+};
+type ComplianceItem = {
+  rule?: string;
+  statute?: string;
+  status?: string;
+  verdict?: string;
+  details?: string;
+  severity?: string;
+  statutory_form?: string;
+};
+type LegalAdvisory = {
+  status?: "ok" | "unavailable";
+  reason?: string;
+  notice?: string;
+  advisory?: {
+    recommended_sections?: RecommendedSection[];
+    accused_demographic_assessment?: { is_juvenile?: boolean | null; age_assessed?: string; applicable_regime?: string };
+    evidentiary_safeguards?: unknown[];
+    source?: string;
+    notice?: string;
+  };
+  compliance_audit?: { compliance_items?: ComplianceItem[] };
+};
+type LegalDoc = {
+  id: string;
+  verification_status?: string;
+  practice_note?: string;
+  act?: string;
+  section?: string;
+  title: string;
+  text?: string;
+  cognizable?: boolean | null;
+  punishment?: string;
+  ingredients?: string[];
+};
+
 type Tab = "evidence" | "studio" | "conflicts" | "patterns" | "legal" | "report";
 
 // Next.js 16: useParams() in a Client Component blocks prerendering unless
@@ -155,30 +244,7 @@ function CaseStudio() {
   const [narrative, setNarrative] = useState<Narrative | null>(null);
   const [narrativeBusy, setNarrativeBusy] = useState(false);
 
-  useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
-    loadAll();
-    return () => stopPolling();
-  }, [caseId]);
-
-  async function loadAll() {
-    setError("");
-    try {
-      const c = await api.getCase(caseId);
-      setTitle(c.case.title);
-      setEvidence(c.evidence);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load case");
-      return;
-    }
-    restoreChat();
-    refreshDerived();
-  }
-
-  function restoreChat() {
+  const restoreChat = useCallback(() => {
     try {
       const raw = window.localStorage.getItem(`cw_chat_${caseId}`);
       const saved = raw ? (JSON.parse(raw) as ChatTurn[]) : [];
@@ -186,9 +252,9 @@ function CaseStudio() {
     } catch {
       // storage unavailable: start empty
     }
-  }
+  }, [caseId]);
 
-  async function refreshDerived() {
+  const refreshDerived = useCallback(async () => {
     try {
       const [tl, cf, links, ent, audit] = await Promise.all([
         api.getTimeline(caseId).catch(() => []),
@@ -210,7 +276,32 @@ function CaseStudio() {
     } catch {
       // best-effort — individual fetches already swallow their own errors
     }
-  }
+  }, [caseId]);
+
+  useEffect(() => {
+    if (!getToken()) {
+      router.push("/login");
+      return;
+    }
+    let alive = true;
+    api
+      .getCase(caseId)
+      .then((c) => {
+        if (!alive) return;
+        setError("");
+        setTitle(c.case.title);
+        setEvidence(c.evidence);
+        restoreChat();
+        refreshDerived();
+      })
+      .catch((e) => {
+        if (alive) setError(e instanceof ApiError ? e.message : "Could not load case");
+      });
+    return () => {
+      alive = false;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [caseId, router, restoreChat, refreshDerived]);
 
   async function refreshEvidence() {
     const list = await api.listEvidence(caseId);
@@ -246,7 +337,10 @@ function CaseStudio() {
     const startedAt = Date.now();
     try {
       const { job_id } = await api.processCase(caseId, legalQuery || undefined);
+      let inFlight = false;
       pollRef.current = setInterval(async () => {
+        if (inFlight) return; // a slow status call must not stack up behind itself
+        inFlight = true;
         try {
           const status = await api.processStatus(caseId, job_id);
           const elapsed = Math.round((Date.now() - startedAt) / 1000);
@@ -271,6 +365,8 @@ function CaseStudio() {
           }
         } catch {
           // transient poll failure — keep polling
+        } finally {
+          inFlight = false;
         }
       }, 4000);
     } catch (e) {
@@ -522,7 +618,7 @@ function EvidenceExplorer({
   const [certError, setCertError] = useState("");
   const [segmentingId, setSegmentingId] = useState<string | null>(null);
   const [segmentPrompt, setSegmentPrompt] = useState<Record<string, string>>({});
-  const [segmentResults, setSegmentResults] = useState<Record<string, any>>({});
+  const [segmentResults, setSegmentResults] = useState<Record<string, SegmentResult>>({});
   const [segmentError, setSegmentError] = useState<Record<string, string>>({});
 
   async function handleSegment(evidenceId: string) {
@@ -676,7 +772,7 @@ function EvidenceExplorer({
                         </div>
                       ) : (
                         <div className="text-amber-400 text-[10px]">
-                          ⚠️ No objects recognized. Try single nouns (e.g. "glove", "crowbar", "padlock").
+                          ⚠️ No objects recognized. Try single nouns (e.g. &quot;glove&quot;, &quot;crowbar&quot;, &quot;padlock&quot;).
                         </div>
                       )}
                     </div>
@@ -872,7 +968,7 @@ function EvidenceImage({
   caseId: string;
   evidenceId: string;
   alt: string;
-  matches?: any[];
+  matches?: SegmentMatch[];
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -908,10 +1004,11 @@ function EvidenceImage({
 
   return (
     <div className="relative w-full aspect-[4/3] rounded mb-2 overflow-hidden bg-zinc-900 select-none">
+      {/* eslint-disable-next-line @next/next/no-img-element -- authenticated blob: URL, not optimisable by next/image */}
       <img src={url} alt={alt} className="w-full h-full object-cover rounded block" />
 
       {/* SAM 3.1 Bounding Box Overlay */}
-      {matches.map((m: any, idx: number) => {
+      {matches.map((m, idx) => {
         const box = m.box;
         if (!box) return null;
         const color = m.color || "#10b981";
@@ -1071,7 +1168,7 @@ function StudioTab(props: StudioTabProps) {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               Scene reconstruction &amp; scenario testing
             </h2>
-            <p className="text-[11px] text-zinc-400 mt-1">Hypothesis visualisation built from this case's evidence. Every element shows what it rests on; nothing here is a record of what happened.</p>
+            <p className="text-[11px] text-zinc-400 mt-1">Hypothesis visualisation built from this case&apos;s evidence. Every element shows what it rests on; nothing here is a record of what happened.</p>
           </div>
           <ForensicSandboxPlayer caseId={caseId} />
         </div>
@@ -1480,30 +1577,37 @@ function PatternsTab({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
-  const [patternsData, setPatternsData] = useState<any>(null);
+  const [patternsData, setPatternsData] = useState<PatternsData | null>(null);
 
-  useEffect(() => {
-    loadPatterns();
-  }, [caseId]);
-
-  async function loadPatterns() {
-    setLoading(true);
-    setError("");
+  const loadPatterns = useCallback(async () => {
     try {
-      const data = await api.getPatterns(caseId);
-      setPatternsData(data);
+      setPatternsData(await api.getPatterns(caseId));
+      setError("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load pattern intelligence");
     } finally {
       setLoading(false);
     }
-  }
+  }, [caseId]);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .getPatterns(caseId)
+      .then((d) => alive && (setPatternsData(d), setError("")))
+      .catch((e) => alive && setError(e instanceof ApiError ? e.message : "Failed to load pattern intelligence"))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [caseId]);
 
   async function handleReExtract() {
     setExtracting(true);
     setError("");
     try {
       await api.extractPatterns(caseId);
+      setLoading(true);
       await loadPatterns();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to re-extract pattern fingerprint");
@@ -1558,6 +1662,18 @@ function PatternsTab({ caseId }: { caseId: string }) {
         <div className="p-3 rounded border border-red-800 bg-red-950 text-red-300 text-sm">{error}</div>
       )}
 
+      {patternsData?.status === "unavailable" && (
+        <div className="p-4 rounded border border-amber-800 bg-amber-950/40 text-amber-200 text-sm" data-testid="patterns-unavailable">
+          <div className="font-semibold mb-1">No modus operandi profile was produced</div>
+          <div className="text-xs">{patternsData.reason} Nothing has been guessed or stored; try again when the analysis has run and the language model is reachable.</div>
+        </div>
+      )}
+      {matches.some((m) => m.is_synthetic_reference) && (
+        <div className="p-3 rounded border border-zinc-700 bg-zinc-900/60 text-zinc-300 text-xs" data-testid="patterns-synthetic-note">
+          Cases marked <b>SYNTHETIC REFERENCE</b> are fictional demonstration records, not real FIRs. They show how matching works until real cases are on file.
+        </div>
+      )}
+
       {/* Active Case M.O. Card */}
       {sig && (
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5">
@@ -1592,7 +1708,7 @@ function PatternsTab({ caseId }: { caseId: string }) {
           <div className="mb-3">
             <div className="text-[11px] uppercase text-zinc-500 mb-1.5 font-medium">Distinctive Signatures</div>
             <div className="flex flex-wrap gap-1.5">
-              {(sig.signature_traits || []).map((trait: string, idx: number) => (
+              {(sig.signature_traits || []).map((trait, idx) => (
                 <span
                   key={idx}
                   className="bg-indigo-950/50 border border-indigo-800/60 text-indigo-200 px-2.5 py-0.5 rounded-full text-xs"
@@ -1696,7 +1812,7 @@ function PatternsTab({ caseId }: { caseId: string }) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {matches.map((m: any) => {
+          {matches.map((m) => {
             const isHigh = m.similarity_percentage >= 75;
             const isMed = m.similarity_percentage >= 60;
             return (
@@ -1769,36 +1885,31 @@ function PatternsTab({ caseId }: { caseId: string }) {
 
 function LegalTab({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
-  const [advisoryData, setAdvisoryData] = useState<any>(null);
+  const [advisoryData, setAdvisoryData] = useState<LegalAdvisory | null>(null);
   const [error, setError] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<LegalDoc[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
-  const [allSections, setAllSections] = useState<any[]>([]);
+  const [allSections, setAllSections] = useState<LegalDoc[]>([]);
 
   useEffect(() => {
-    loadLegalData();
+    let alive = true;
+    Promise.all([api.getLegalAdvisory(caseId), api.getLegalSections()])
+      .then(([adv, sections]) => {
+        if (!alive) return;
+        setError("");
+        setAdvisoryData(adv);
+        setAllSections(sections);
+        setSearchResults(sections);
+      })
+      .catch((e) => alive && setError(e instanceof ApiError ? e.message : "Failed to load legal intelligence"))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
   }, [caseId]);
-
-  async function loadLegalData() {
-    setLoading(true);
-    setError("");
-    try {
-      const [adv, sections] = await Promise.all([
-        api.getLegalAdvisory(caseId),
-        api.getLegalSections(),
-      ]);
-      setAdvisoryData(adv);
-      setAllSections(sections);
-      setSearchResults(sections);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load legal intelligence");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function executeSearch(query: string, filterAct: string) {
     setSearchBusy(true);
@@ -1832,6 +1943,7 @@ function LegalTab({ caseId }: { caseId: string }) {
   }
 
   const adv = advisoryData?.advisory;
+  const advisoryUnavailable = advisoryData?.status === "unavailable";
   const compliance = advisoryData?.compliance_audit;
   const recommendedSections = adv?.recommended_sections || [];
   const demographic = adv?.accused_demographic_assessment;
@@ -1854,6 +1966,16 @@ function LegalTab({ caseId }: { caseId: string }) {
 
       {error && (
         <div className="p-3 rounded border border-red-800 bg-red-950 text-red-300 text-sm">{error}</div>
+      )}
+
+      <div className="p-3 rounded border border-amber-800 bg-amber-950/40 text-amber-200 text-xs" data-testid="legal-verify-notice">
+        {advisoryData?.notice ||
+          "AI suggestions drafted from this case's recorded facts. Check every section number, sub-clause and punishment against the official text of the Act before relying on it."}
+      </div>
+      {advisoryUnavailable && (
+        <div className="p-3 rounded border border-zinc-700 bg-zinc-900/60 text-zinc-300 text-xs" data-testid="legal-unavailable">
+          No sections were suggested. {advisoryData?.reason}
+        </div>
       )}
 
       {/* SECTION 1: Statutory FIR Charge Recommendations */}
@@ -1886,7 +2008,7 @@ function LegalTab({ caseId }: { caseId: string }) {
 
         {/* Recommended Sections Cards */}
         <div className="grid grid-cols-1 gap-4">
-          {recommendedSections.map((sec: any, idx: number) => (
+          {recommendedSections.map((sec, idx) => (
             <div
               key={idx}
               className="bg-zinc-900/70 border border-zinc-800 rounded-lg p-5 transition-all hover:border-zinc-700 shadow-sm"
@@ -1958,7 +2080,7 @@ function LegalTab({ caseId }: { caseId: string }) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {complianceItems.map((item: any, idx: number) => {
+          {complianceItems.map((item, idx) => {
             const isCrit = item.severity === "CRITICAL" || item.severity === "HIGH";
             return (
               <div
@@ -2056,7 +2178,7 @@ function LegalTab({ caseId }: { caseId: string }) {
 
         {/* Results Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {searchResults.map((doc: any) => (
+          {searchResults.map((doc) => (
             <div
               key={doc.id}
               className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 space-y-2 hover:border-zinc-750 transition-colors"
@@ -2088,6 +2210,11 @@ function LegalTab({ caseId }: { caseId: string }) {
               <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-2.5 rounded border border-zinc-900">
                 {doc.text}
               </p>
+              {doc.verification_status && doc.verification_status !== "verified" && (
+                <div className="text-[10px] text-amber-400/90" title="This entry is a summary written for this tool, not the official text">
+                  Summary, not the official text — verify against the Act or judgment before citing.
+                </div>
+              )}
 
               {doc.ingredients && doc.ingredients.length > 0 && (
                 <div className="pt-1">

@@ -26,10 +26,10 @@ async function testSamBoundingBox() {
     await page.waitForTimeout(1000);
 
     if (page.url().includes('/login')) {
-      console.log('2. Performing login as admin / changeme123 ...');
+      console.log('2. Performing login as admin (password from CW_PASSWORD) ...');
       const inputs = page.locator('input');
       await inputs.nth(0).fill('admin');
-      await inputs.nth(1).fill('changeme123');
+      await inputs.nth(1).fill((process.env.CW_PASSWORD || (() => { throw new Error('Set CW_PASSWORD'); })()));
       await page.click('button[type="submit"]');
       await page.waitForTimeout(2000);
     }

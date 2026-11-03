@@ -25,7 +25,7 @@ FRAME_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}_F\d{1,3}\.png$")
 
 
 def _now() -> str:
-    return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
 
 
 def frames_dir(case_id: str, review_id: str) -> Path:
@@ -40,7 +40,7 @@ def start_review(case_id: str, user: Dict[str, Any]) -> str:
         run = _current_ready_run(conn, case_id)
         busy = conn.execute("SELECT review_id, created_at FROM sandbox_reviews WHERE case_id=? AND status='running' ORDER BY created_at DESC LIMIT 1", (case_id,)).fetchone()
         if busy:
-            age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(busy["created_at"].rstrip("Z"))).total_seconds()
+            age = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.datetime.fromisoformat(busy["created_at"].rstrip("Z"))).total_seconds()
             if age < 900:
                 raise SandboxError("A review of this scene is already running.", 409)
             conn.execute("UPDATE sandbox_reviews SET status='failed', message='timed out' WHERE review_id=?", (busy["review_id"],))
