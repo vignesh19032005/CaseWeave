@@ -2,7 +2,7 @@
 //
 //   CW_WEB=http://127.0.0.1:3100 CW_USER=admin CW_PASSWORD=... CW_CASE=CW-XXXXXX \
 //   [CW_API_PROXY_FROM=http://127.0.0.1:8010 CW_API_PROXY_TO=http://127.0.0.1:8110] \
-//   [CW_RUN_PIPELINE=1 CW_SAMPLE_DIR=".../Sample test case"] node e2e/ui-check.cjs <tag>
+//   [CW_RUN_PIPELINE=1 CW_SAMPLE_DIR=".../backend/data/synthetic_cases/pharmacy_burglary_photos"] node e2e/ui-check.cjs <tag>
 //
 // With CW_RUN_PIPELINE=1 the script creates a case through the UI, uploads the sample evidence through the UI,
 // clicks "Run pipeline", waits for it and then runs the same checks as for an existing case (CW_CASE).

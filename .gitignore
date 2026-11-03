@@ -90,3 +90,12 @@ backend/data/synthetic_cases/results/*.done
 backend/data/synthetic_cases/results/*.log
 .claude/
 *.done
+
+# Kept locally, not part of the final submission
+/Sample test case/
+/SANDBOX_FIX_CHECKLIST.md
+/docs/DEMO_SCRIPT.md
+backend/scripts/download_models.py
+backend/scripts/populate_legal_corpus.py
+# build artefacts of the demo video
+/demo/
