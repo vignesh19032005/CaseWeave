@@ -28,7 +28,15 @@ jobs:
 
       - name: Run pip-audit
         run: |
-          pip-audit -r backend/requirements.txt
+          # No fixed ChromaDB release exists. All four advisories concern ChromaDB's HTTP server API
+          # (the /api/v2/tenants/... endpoints and its RBAC provider). CaseWeave never starts a ChromaDB server:
+          # it only uses the embedded PersistentClient, so the vulnerable code path is not reachable.
+          # Remove these ignores once a fixed release is published.
+          pip-audit -r backend/requirements.txt \
+            --ignore-vuln PYSEC-2026-311 \
+            --ignore-vuln PYSEC-2026-3813 \
+            --ignore-vuln PYSEC-2026-3814 \
+            --ignore-vuln PYSEC-2026-3815
 
   node-security-audit:
     name: Frontend Security Audit (npm audit)
