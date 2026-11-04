@@ -37,7 +37,7 @@ ROLES = ("investigator", "reviewer", "admin")
 DEFAULT_ADMIN_PASSWORD = "changeme123"
 MIN_PASSWORD_LENGTH = 10
 MAX_PASSWORD_BYTES = 72  # bcrypt ignores (or, in newer versions, rejects) anything longer
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{3,64}$")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@ -]{3,64}$")
 
 # endpoint action -> roles allowed to perform it
 PERMISSIONS = {
